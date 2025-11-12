@@ -1,0 +1,19 @@
+{
+  "required": true,
+  "minVersion": "0.8",
+  "package": "net.oculus.mixin",
+  "plugin": "net.oculus.mixin.OculusMixinPlugin",
+  "compatibilityLevel": "JAVA_8",
+  "refmap": "oculus.refmap.json",
+  "mixins": [],
+  "client": [
+    "ChunkBuildBuffersMixin",
+    "ChunkRenderRebuildTaskMixin",
+    "pipeline.ChunkOneshotGraphicsStateMixin",
+    "pipeline.MultidrawChunkRenderBackendMixin",
+    "vertexformat.GlVertexFormatBuilderMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}

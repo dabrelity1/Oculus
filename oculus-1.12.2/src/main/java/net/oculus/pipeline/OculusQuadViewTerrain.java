@@ -4,61 +4,49 @@ import net.oculus.pipeline.vertex.geometry.QuadView;
 
 import java.nio.ByteBuffer;
 
-import org.lwjgl.system.MemoryUtil;
-
 /**
  * Provides read-only access to the most recently written quad inside the chunk vertex buffer.
  */
 abstract class OculusQuadViewTerrain implements QuadView {
-    long pointer;
+    private static final int POSITION_X_OFFSET = 0;
+    private static final int POSITION_Y_OFFSET = 4;
+    private static final int POSITION_Z_OFFSET = 8;
+    private static final int UV_U_OFFSET = 16;
+    private static final int UV_V_OFFSET = 20;
+
+    int pointer;
     int stride;
 
     @Override
     public float x(int index) {
-        return normalizePosition(getShort(pointer - stride * (3L - index)));
+        return readFloat(vertexOffset(index) + POSITION_X_OFFSET);
     }
 
     @Override
     public float y(int index) {
-        return normalizePosition(getShort(pointer + 2 - stride * (3L - index)));
+        return readFloat(vertexOffset(index) + POSITION_Y_OFFSET);
     }
 
     @Override
     public float z(int index) {
-        return normalizePosition(getShort(pointer + 4 - stride * (3L - index)));
+        return readFloat(vertexOffset(index) + POSITION_Z_OFFSET);
     }
 
     @Override
     public float u(int index) {
-        return normalizeTexture(getShort(pointer + 12 - stride * (3L - index)));
+        return readFloat(vertexOffset(index) + UV_U_OFFSET);
     }
 
     @Override
     public float v(int index) {
-        return normalizeTexture(getShort(pointer + 14 - stride * (3L - index)));
+        return readFloat(vertexOffset(index) + UV_V_OFFSET);
     }
 
-    abstract short getShort(long address);
-
-    private static float normalizePosition(short value) {
-        return (value & 0xFFFF) * (1.0f / 65535.0f);
+    private int vertexOffset(int index) {
+        return this.pointer - this.stride * (3 - index);
     }
 
-    private static float normalizeTexture(short value) {
-        return (value & 0xFFFF) * (1.0f / 32768.0f);
-    }
-
-    static final class UnsafeView extends OculusQuadViewTerrain {
-        void setup(long pointer, int stride) {
-            this.pointer = pointer;
-            this.stride = stride;
-        }
-
-        @Override
-        short getShort(long address) {
-            return MemoryUtil.memGetShort(address);
-        }
-    }
+    protected abstract float readFloat(int address);
 
     static final class NioView extends OculusQuadViewTerrain {
         private ByteBuffer buffer;
@@ -70,8 +58,8 @@ abstract class OculusQuadViewTerrain implements QuadView {
         }
 
         @Override
-        short getShort(long address) {
-            return buffer.getShort((int) address);
+        protected float readFloat(int address) {
+            return this.buffer.getFloat(address);
         }
     }
 }
