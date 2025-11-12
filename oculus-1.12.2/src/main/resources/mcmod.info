@@ -1,0 +1,16 @@
+[
+  {
+    "modid": "oculus",
+    "name": "Oculus",
+    "description": "A performance-focused shader mod for 1.12.2 based on Iris.",
+    "version": "${file.jarVersion}",
+    "mcversion": "${mcversion}",
+    "url": "",
+    "updateUrl": "",
+    "authorList": ["(Oculus Team, Ported)"],
+    "credits": "Based on Iris and the work of the Iris/Oculus teams.",
+    "logoFile": "",
+    "screenshots": [],
+    "dependencies": ["relictium"]
+  }
+]

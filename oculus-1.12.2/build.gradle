@@ -1,0 +1,52 @@
+buildscript {
+    repositories {
+        maven { name = "forge"; url = "https://maven.minecraftforge.net" }
+        maven { name = "sonatype"; url = "https://oss.sonatype.org/content/repositories/snapshots/" }
+        mavenCentral()
+        jcenter()
+    }
+    dependencies {
+        classpath "net.minecraftforge.gradle:ForgeGradle:2.3-SNAPSHOT"
+    }
+}
+
+apply plugin: "net.minecraftforge.gradle.forge"
+
+version = "0.1.0"
+group = "net.coderbot"
+archivesBaseName = "oculus"
+
+sourceCompatibility = targetCompatibility = "1.8"
+
+def relictiumVersion = "1.2.0"
+
+minecraft {
+    version = "1.12.2-14.23.5.2768"
+    runDir = "run"
+    mappings = "stable_39"
+    makeObfSourceJar = false
+}
+
+repositories {
+    maven {
+        name = "ForgeMaven"
+        url = "https://maven.minecraftforge.net"
+    }
+    maven {
+        name = "Modrinth"
+        url = "https://api.modrinth.com/maven"
+    }
+}
+
+dependencies {
+    deobfCompile "maven.modrinth:relictium:${relictiumVersion}"
+}
+
+processResources {
+    inputs.property "version", project.version
+    inputs.property "mcversion", project.minecraft.version
+
+    from(sourceSets.main.resources.srcDirs) {
+        include "**/*"
+    }
+}
