@@ -3,56 +3,63 @@ package net.oculus.pipeline;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
-import java.util.function.Function;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.GlStateManager;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.lwjgl.opengl.GL13;
+
+import net.oculus.shaderpack.ProgramSet;
+import net.oculus.shaderpack.ShaderPack;
+import net.oculus.shaderpack.ShaderProperties;
 import net.oculus.uniforms.SystemTimeUniforms;
 
 /**
- * Ported skeleton of the 1.16.5 shader pipeline manager. The current 1.12.2 build keeps all
- * behaviour minimal while mirroring the public API relied on by the shader loader and mixins.
+ * 1.12.2 port of the shader pipeline manager. The class decides whether the
+ * fixed-function pipeline or the new shader-backed pipeline should handle world
+ * rendering for a given dimension.
  */
 public final class PipelineManager {
-    public static final PipelineManager INSTANCE = new PipelineManager(dimension -> new FixedFunctionWorldRenderingPipeline());
+    public static final PipelineManager INSTANCE = new PipelineManager();
 
     private static final Logger LOGGER = LogManager.getLogger("OculusPipeline");
 
-    private final Function<NamespacedId, WorldRenderingPipeline> pipelineFactory;
     private final Map<NamespacedId, WorldRenderingPipeline> pipelinesPerDimension = new HashMap<>();
 
     private WorldRenderingPipeline pipeline = new FixedFunctionWorldRenderingPipeline();
     private int versionCounterForSodiumShaderReload;
 
-    public PipelineManager(Function<NamespacedId, WorldRenderingPipeline> pipelineFactory) {
-        this.pipelineFactory = pipelineFactory;
+    private PipelineManager() {
     }
 
     public WorldRenderingPipeline preparePipeline(NamespacedId dimension) {
         WorldRenderingPipeline current = pipelinesPerDimension.get(dimension);
+        boolean shadersEnabled = BlockRenderingSettings.INSTANCE.isReloadRequired();
 
         if (current == null) {
             SystemTimeUniforms.COUNTER.reset();
             SystemTimeUniforms.TIMER.reset();
-
-            LOGGER.info("Creating pipeline for dimension {}", dimension);
-            current = pipelineFactory.apply(dimension);
-            if (current == null) {
-                current = new FixedFunctionWorldRenderingPipeline();
-            }
-
+            current = createPipeline(shadersEnabled);
             pipelinesPerDimension.put(dimension, current);
+            logPipelineCreation(dimension, current);
+        } else if (shadersEnabled && !(current instanceof ShaderWorldRenderingPipeline)) {
+            current.destroy();
+            current = createPipeline(true);
+            pipelinesPerDimension.put(dimension, current);
+            logPipelineCreation(dimension, current);
+        } else if (!shadersEnabled && !(current instanceof FixedFunctionWorldRenderingPipeline)) {
+            current.destroy();
+            current = createPipeline(false);
+            pipelinesPerDimension.put(dimension, current);
+            logPipelineCreation(dimension, current);
+        }
 
-            if (BlockRenderingSettings.INSTANCE.isReloadRequired()) {
-                Minecraft minecraft = Minecraft.getMinecraft();
-                if (minecraft != null && minecraft.renderGlobal != null) {
-                    minecraft.renderGlobal.loadRenderers();
-                }
-
-                BlockRenderingSettings.INSTANCE.clearReloadRequired();
+        if (shadersEnabled) {
+            BlockRenderingSettings.INSTANCE.clearReloadRequired();
+            Minecraft minecraft = Minecraft.getMinecraft();
+            if (minecraft != null && minecraft.renderGlobal != null) {
+                minecraft.renderGlobal.loadRenderers();
             }
         }
 
@@ -60,22 +67,33 @@ public final class PipelineManager {
         return pipeline;
     }
 
-    public void beginWorldRendering(float partialTicks) {
-        preparePipeline(NamespacedId.overworld());
-
-        if (pipeline != null) {
-            pipeline.beginWorldRendering(partialTicks);
+    private WorldRenderingPipeline createPipeline(boolean shadersEnabled) {
+        if (shadersEnabled) {
+            ProgramSet programs = new ProgramSet(ShaderPack.placeholder(), ShaderProperties.empty());
+            return new ShaderWorldRenderingPipeline(programs);
         }
+
+        return new FixedFunctionWorldRenderingPipeline();
+    }
+
+    private void logPipelineCreation(NamespacedId dimension, WorldRenderingPipeline pipeline) {
+        LOGGER.info("Creating pipeline for dimension {}: {}", dimension, pipeline.getClass().getSimpleName());
+    }
+
+    public WorldRenderingPipeline getPipeline() {
+        return preparePipeline(NamespacedId.overworld());
+    }
+
+    public Optional<WorldRenderingPipeline> getPipelineOptional() {
+        return Optional.ofNullable(pipeline);
+    }
+
+    public void beginWorldRendering(float partialTicks) {
+        getPipeline().beginWorldRendering(partialTicks);
     }
 
     public void endWorldRendering() {
-        if (pipeline != null) {
-            pipeline.endWorldRendering();
-        }
-    }
-
-    public Optional<WorldRenderingPipeline> getPipeline() {
-        return Optional.ofNullable(pipeline);
+        getPipeline().endWorldRendering();
     }
 
     public int getVersionCounterForSodiumShaderReload() {
