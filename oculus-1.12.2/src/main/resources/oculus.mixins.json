@@ -11,6 +11,7 @@
     "ChunkRenderRebuildTaskMixin",
     "pipeline.ChunkOneshotGraphicsStateMixin",
     "pipeline.MultidrawChunkRenderBackendMixin",
+    "pipeline.WorldRendererMixin",
     "vertexformat.GlVertexFormatBuilderMixin"
   ],
   "injectors": {

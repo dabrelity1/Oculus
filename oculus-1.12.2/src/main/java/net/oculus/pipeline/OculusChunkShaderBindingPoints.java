@@ -9,10 +9,11 @@ import me.jellysquid.mods.sodium.client.gl.shader.ShaderBindingPoint;
  */
 public final class OculusChunkShaderBindingPoints {
     public static final ShaderBindingPoint NORMAL = new ShaderBindingPoint(5);
-    public static final ShaderBindingPoint TANGENT = new ShaderBindingPoint(6);
-    public static final ShaderBindingPoint MID_UV = new ShaderBindingPoint(7);
-    public static final ShaderBindingPoint MATERIAL = new ShaderBindingPoint(8);
-    public static final ShaderBindingPoint MID_BLOCK = new ShaderBindingPoint(9);
+    public static final ShaderBindingPoint ENTITY = new ShaderBindingPoint(11);
+    public static final ShaderBindingPoint MID_UV = new ShaderBindingPoint(12);
+    public static final ShaderBindingPoint TANGENT = new ShaderBindingPoint(13);
+    public static final ShaderBindingPoint MID_BLOCK = new ShaderBindingPoint(14);
+    public static final ShaderBindingPoint MATERIAL = new ShaderBindingPoint(7);
 
     private OculusChunkShaderBindingPoints() {
     }
