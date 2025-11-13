@@ -15,12 +15,12 @@ import net.oculus.pipeline.PipelineManager;
  */
 @Mixin(EntityRenderer.class)
 public abstract class LevelRendererMixin {
-    @Inject(method = "renderWorld(FJ)V", at = @At("HEAD"), remap = false)
+    @Inject(method = "renderWorld(FJ)V", at = @At("HEAD"))
     private void oculus$beginWorld(float partialTicks, long finishTimeNano, CallbackInfo ci) {
         PipelineManager.INSTANCE.beginWorldRendering(partialTicks);
     }
 
-    @Inject(method = "renderWorld(FJ)V", at = @At("RETURN"), remap = false)
+    @Inject(method = "renderWorld(FJ)V", at = @At("RETURN"))
     private void oculus$endWorld(float partialTicks, long finishTimeNano, CallbackInfo ci) {
         PipelineManager.INSTANCE.endWorldRendering();
     }

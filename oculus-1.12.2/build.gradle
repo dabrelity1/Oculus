@@ -19,12 +19,10 @@ buildscript {
     }
     dependencies {
         classpath "net.minecraftforge.gradle:ForgeGradle:2.3-SNAPSHOT"
-    classpath "org.spongepowered:mixingradle:0.6-SNAPSHOT"
     }
 }
 
 apply plugin: "net.minecraftforge.gradle.forge"
-apply plugin: "org.spongepowered.mixin"
 
 version = "0.1.0"
 group = "net.coderbot"
@@ -60,12 +58,6 @@ repositories {
     }
 }
 
-sourceSets {
-    main {
-        ext.refMap = "oculus.refmap.json"
-    }
-}
-
 dependencies {
     deobfCompile "maven.modrinth:relictium:${relictiumVersion}"
     compile "org.spongepowered:mixin:0.8.5"
@@ -73,9 +65,30 @@ dependencies {
     annotationProcessor "org.spongepowered:mixin:0.8.5:processor"
 }
 
-mixin {
-    defaultObfuscationEnv "searge"
-    add sourceSets.main, "oculus.mixins.json"
+def mixinConfigName = "oculus.mixins.json"
+def mcVersionBase = minecraft.version.contains('-') ? minecraft.version.substring(0, minecraft.version.indexOf('-')) : minecraft.version
+def mappingParts = minecraft.mappings.split('_')
+def mappingDir = new File(gradle.gradleUserHomeDir,
+        "caches/minecraft/de/oceanlabs/mcp/mcp_${mappingParts[0]}/${mappingParts[1]}/${mcVersionBase}/srgs")
+def inSrgFile = new File(mappingDir, "mcp-srg.srg")
+def inNotchFile = new File(mappingDir, "mcp-notch.srg")
+def outRefmapFile = file("${buildDir}/resources/main/oculus.refmap.json")
+def outSrgFile = file("${buildDir}/tmp/compileJava/mcp-srg.srg")
+def outNotchFile = file("${buildDir}/tmp/compileJava/mcp-notch.srg")
+
+tasks.withType(JavaCompile).configureEach { compileTask ->
+    compileTask.doFirst {
+        outRefmapFile.parentFile.mkdirs()
+        outSrgFile.parentFile.mkdirs()
+    }
+    compileTask.options.compilerArgs += [
+        "-AdefaultObfuscationEnv=searge",
+        "-AoutRefMapFile=${outRefmapFile}",
+        "-AreobfSrgFile=${inSrgFile}",
+        "-AreobfNotchSrgFile=${inNotchFile}",
+        "-AoutSrgFile=${outSrgFile}",
+        "-AoutNotchSrgFile=${outNotchFile}"
+    ]
 }
 
 processResources {
@@ -87,20 +100,6 @@ processResources {
     }
 }
 
-jar {
-    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
-}
-
-def generatedRefmap = file("${buildDir}/tmp/compileJava/compileJava-refmap.json")
-
-tasks.register("copyRefmap", Copy) {
-    dependsOn compileJava
-    from(generatedRefmap)
-    into("${buildDir}/resources/main")
-    rename { "oculus.refmap.json" }
-    onlyIf { generatedRefmap.exists() }
-}
-
-tasks.getByName("classes") {
-    dependsOn "copyRefmap"
+tasks.getByName("runClient") {
+    jvmArgs "-Dmixin.debug.verbose=true", "-Dmixin.debug.export=true", "-Dmixin.configs=oculus.mixins.json"
 }
