@@ -6,7 +6,7 @@ import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Mutable;
 import org.spongepowered.asm.mixin.Shadow;
 
-import org.embeddedt.embeddium.client.render.chunk.format.ChunkMeshAttribute;
+import me.jellysquid.mods.sodium.client.render.chunk.format.ChunkMeshAttribute;
 import net.coderbot.iris.compat.sodium.impl.vertex_format.IrisChunkMeshAttributes;
 
 /**

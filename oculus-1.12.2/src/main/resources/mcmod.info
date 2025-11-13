@@ -11,6 +11,6 @@
     "credits": "Based on Iris and the work of the Iris/Oculus teams.",
     "logoFile": "",
     "screenshots": [],
-    "dependencies": ["relictium"]
+  "dependencies": ["vintagium"]
   }
 ]

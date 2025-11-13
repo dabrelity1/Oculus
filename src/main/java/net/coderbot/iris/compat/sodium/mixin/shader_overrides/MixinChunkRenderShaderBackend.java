@@ -20,15 +20,15 @@ import net.minecraft.client.renderer.GlStateManager;
 import net.minecraft.util.ResourceLocation;
 
 import org.apache.commons.io.IOUtils;
-import org.embeddedt.embeddium.client.gl.device.RenderDevice;
-import org.embeddedt.embeddium.client.gl.shader.GlShader;
-import org.embeddedt.embeddium.client.gl.shader.ShaderConstants;
-import org.embeddedt.embeddium.client.gl.shader.ShaderLoader;
-import org.embeddedt.embeddium.client.gl.shader.ShaderType;
-import org.embeddedt.embeddium.client.model.vertex.type.ChunkVertexType;
-import org.embeddedt.embeddium.client.render.chunk.passes.BlockRenderPass;
-import org.embeddedt.embeddium.client.render.chunk.shader.ChunkProgram;
-import org.embeddedt.embeddium.client.render.chunk.shader.ChunkRenderShaderBackend;
+import me.jellysquid.mods.sodium.client.gl.device.RenderDevice;
+import me.jellysquid.mods.sodium.client.gl.shader.GlShader;
+import me.jellysquid.mods.sodium.client.gl.shader.ShaderConstants;
+import me.jellysquid.mods.sodium.client.gl.shader.ShaderLoader;
+import me.jellysquid.mods.sodium.client.gl.shader.ShaderType;
+import me.jellysquid.mods.sodium.client.model.vertex.type.ChunkVertexType;
+import me.jellysquid.mods.sodium.client.render.chunk.passes.BlockRenderPass;
+import me.jellysquid.mods.sodium.client.render.chunk.shader.ChunkProgram;
+import me.jellysquid.mods.sodium.client.render.chunk.shader.ChunkRenderShaderBackend;
 import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
@@ -70,7 +70,7 @@ public class MixinChunkRenderShaderBackend implements ChunkRenderBackendExt {
 	}
 
 	@Redirect(method = "createShader", at = @At(value = "INVOKE",
-			target = "Lorg/embeddedt/embeddium/client/gl/shader/ShaderLoader;loadShader(Lorg/embeddedt/embeddium/client/gl/device/RenderDevice;Lorg/embeddedt/embeddium/client/gl/shader/ShaderType;Lnet/minecraft/util/ResourceLocation;Ljava/util/List;)Lorg/embeddedt/embeddium/client/gl/shader/GlShader;"),
+			target = "Lme/jellysquid/mods/sodium/client/gl/shader/ShaderLoader;loadShader(Lme/jellysquid/mods/sodium/client/gl/device/RenderDevice;Lme/jellysquid/mods/sodium/client/gl/shader/ShaderType;Lnet/minecraft/util/ResourceLocation;Ljava/util/List;)Lme/jellysquid/mods/sodium/client/gl/shader/GlShader;"),
 		remap = false)
 	private GlShader iris$redirectOriginalShader(RenderDevice renderDevice, ShaderType shaderType, ResourceLocation name, List<String> constants) {
 		if (this.vertexType == IrisModelVertexFormats.MODEL_VERTEX_XHFP) {
@@ -152,7 +152,7 @@ public class MixinChunkRenderShaderBackend implements ChunkRenderBackendExt {
 	}
 
 	@Inject(method = "begin", at = @At(value = "FIELD",
-			target = "Lorg/embeddedt/embeddium/client/render/chunk/shader/ChunkRenderShaderBackend;activeProgram:Lorg/embeddedt/embeddium/client/render/chunk/shader/ChunkProgram;",
+			target = "Lme/jellysquid/mods/sodium/client/render/chunk/shader/ChunkRenderShaderBackend;activeProgram:Lme/jellysquid/mods/sodium/client/render/chunk/shader/ChunkProgram;",
 			args = "opcode=PUTFIELD", shift = At.Shift.AFTER), remap = false)
 	private void iris$applyOverride(CallbackInfo ci) {
 		if (this.override != null) {

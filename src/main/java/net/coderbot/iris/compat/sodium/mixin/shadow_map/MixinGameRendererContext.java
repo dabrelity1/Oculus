@@ -6,7 +6,7 @@ import org.spongepowered.asm.mixin.injection.Redirect;
 
 import com.mojang.math.Matrix4f;
 
-import org.embeddedt.embeddium.client.render.GameRendererContext;
+import me.jellysquid.mods.sodium.client.render.GameRendererContext;
 import net.coderbot.iris.shadows.ShadowRenderingState;
 
 /**

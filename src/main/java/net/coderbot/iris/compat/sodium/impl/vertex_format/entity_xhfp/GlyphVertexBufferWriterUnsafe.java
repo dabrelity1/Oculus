@@ -2,11 +2,11 @@ package net.coderbot.iris.compat.sodium.impl.vertex_format.entity_xhfp;
 
 import org.lwjgl.system.MemoryUtil;
 
-import org.embeddedt.embeddium.client.model.vertex.buffer.VertexBufferView;
-import org.embeddedt.embeddium.client.model.vertex.buffer.VertexBufferWriterUnsafe;
-import org.embeddedt.embeddium.client.model.vertex.formats.glyph.GlyphVertexSink;
-import org.embeddedt.embeddium.client.model.vertex.formats.quad.QuadVertexSink;
-import org.embeddedt.embeddium.client.util.Norm3b;
+import me.jellysquid.mods.sodium.client.model.vertex.buffer.VertexBufferView;
+import me.jellysquid.mods.sodium.client.model.vertex.buffer.VertexBufferWriterUnsafe;
+import me.jellysquid.mods.sodium.client.model.vertex.formats.glyph.GlyphVertexSink;
+import me.jellysquid.mods.sodium.client.model.vertex.formats.quad.QuadVertexSink;
+import me.jellysquid.mods.sodium.client.util.Norm3b;
 import net.coderbot.iris.vendored.joml.Vector3f;
 import net.coderbot.iris.vertices.IrisVertexFormats;
 import net.coderbot.iris.vertices.NormalHelper;

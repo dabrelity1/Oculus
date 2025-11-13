@@ -1,8 +1,8 @@
 package net.coderbot.iris.compat.sodium.mixin.separate_ao;
 
-import org.embeddedt.embeddium.client.render.chunk.compile.buffers.ChunkModelBuffers;
-import org.embeddedt.embeddium.client.render.pipeline.BlockRenderer;
-import org.embeddedt.embeddium.client.util.color.ColorABGR;
+import me.jellysquid.mods.sodium.client.render.chunk.compile.buffers.ChunkModelBuffers;
+import me.jellysquid.mods.sodium.client.render.pipeline.BlockRenderer;
+import me.jellysquid.mods.sodium.client.util.color.ColorABGR;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;

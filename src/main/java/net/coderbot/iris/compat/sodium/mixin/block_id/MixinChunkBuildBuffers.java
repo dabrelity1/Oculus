@@ -8,11 +8,11 @@ import org.spongepowered.asm.mixin.injection.Redirect;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 import it.unimi.dsi.fastutil.objects.Object2IntMap;
-import org.embeddedt.embeddium.client.model.vertex.VertexSink;
-import org.embeddedt.embeddium.client.model.vertex.buffer.VertexBufferView;
-import org.embeddedt.embeddium.client.model.vertex.type.ChunkVertexType;
-import org.embeddedt.embeddium.client.render.chunk.compile.ChunkBuildBuffers;
-import org.embeddedt.embeddium.client.render.chunk.passes.BlockRenderPassManager;
+import me.jellysquid.mods.sodium.client.model.vertex.VertexSink;
+import me.jellysquid.mods.sodium.client.model.vertex.buffer.VertexBufferView;
+import me.jellysquid.mods.sodium.client.model.vertex.type.ChunkVertexType;
+import me.jellysquid.mods.sodium.client.render.chunk.compile.ChunkBuildBuffers;
+import me.jellysquid.mods.sodium.client.render.chunk.passes.BlockRenderPassManager;
 import net.coderbot.iris.block_rendering.BlockRenderingSettings;
 import net.coderbot.iris.compat.sodium.impl.block_context.BlockContextHolder;
 import net.coderbot.iris.compat.sodium.impl.block_context.ChunkBuildBuffersExt;
@@ -40,10 +40,10 @@ public class MixinChunkBuildBuffers implements ChunkBuildBuffersExt {
 	}
 
 	@Redirect(method = "init", remap = false, at = @At(value = "INVOKE",
-			target = "org/embeddedt/embeddium/client/model/vertex/type/ChunkVertexType.createBufferWriter(" +
-				"Lorg/embeddedt/embeddium/client/model/vertex/buffer/VertexBufferView;" +
+			target = "me/jellysquid/mods/sodium/client/model/vertex/type/ChunkVertexType.createBufferWriter(" +
+				"Lme/jellysquid/mods/sodium/client/model/vertex/buffer/VertexBufferView;" +
 				"Z" +
-			")Lorg/embeddedt/embeddium/client/model/vertex/VertexSink;", remap = false))
+		")Lme/jellysquid/mods/sodium/client/model/vertex/VertexSink;", remap = false))
 	private VertexSink iris$redirectWriterCreation(ChunkVertexType vertexType,
 												   VertexBufferView buffer, boolean direct) {
 		VertexSink sink = vertexType.createBufferWriter(buffer, direct);

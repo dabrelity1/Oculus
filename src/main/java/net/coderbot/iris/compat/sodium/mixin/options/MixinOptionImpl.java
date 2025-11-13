@@ -8,7 +8,7 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
-import org.embeddedt.embeddium.client.gui.options.OptionImpl;
+import me.jellysquid.mods.sodium.client.gui.options.OptionImpl;
 import net.coderbot.iris.compat.sodium.impl.options.OptionImplExtended;
 
 /**

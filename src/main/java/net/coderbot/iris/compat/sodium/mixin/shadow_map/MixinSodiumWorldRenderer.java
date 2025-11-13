@@ -10,8 +10,8 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 import com.mojang.blaze3d.vertex.PoseStack;
 
-import org.embeddedt.embeddium.client.render.SodiumWorldRenderer;
-import org.embeddedt.embeddium.client.render.chunk.ChunkRenderManager;
+import me.jellysquid.mods.sodium.client.render.SodiumWorldRenderer;
+import me.jellysquid.mods.sodium.client.render.chunk.ChunkRenderManager;
 import net.coderbot.iris.compat.sodium.impl.shadow_map.SwappableChunkRenderManager;
 import net.coderbot.iris.pipeline.ShadowRenderer;
 import net.coderbot.iris.shadows.ShadowRenderingState;
@@ -94,8 +94,8 @@ public class MixinSodiumWorldRenderer {
 
 	@Inject(method = "scheduleTerrainUpdate()V", remap = false,
 			at = @At(value = "INVOKE",
-					target = "org/embeddedt/embeddium/client/render/chunk/ChunkRenderManager.markDirty ()V",
-					remap = false))
+					target = "me/jellysquid/mods/sodium/client/render/chunk/ChunkRenderManager.markDirty ()V",
+				remap = false))
 	private void iris$ensureStateSwappedBeforeMarkDirty(CallbackInfo ci) {
 		iris$ensureStateSwapped();
 	}
@@ -104,7 +104,7 @@ public class MixinSodiumWorldRenderer {
 	//       because it's relatively solid and is in between those two calls.
 	@Inject(method = "updateChunks", remap = false,
 			at = @At(value = "FIELD",
-					 target = "org/embeddedt/embeddium/client/render/SodiumWorldRenderer.lastCameraX : D",
+					 target = "me/jellysquid/mods/sodium/client/render/SodiumWorldRenderer.lastCameraX : D",
 					 ordinal = 0,
 					 remap = false))
 	private void iris$ensureStateSwappedInUpdateChunks(Camera camera, Frustum frustum, boolean hasForcedFrustum,
@@ -114,7 +114,7 @@ public class MixinSodiumWorldRenderer {
 
 	@Redirect(method = "updateChunks", remap = false,
 			at = @At(value = "FIELD",
-					target = "org/embeddedt/embeddium/client/render/SodiumWorldRenderer.lastCameraX : D",
+					target = "me/jellysquid/mods/sodium/client/render/SodiumWorldRenderer.lastCameraX : D",
 					ordinal = 0,
 					remap = false))
 	private double iris$forceChunkGraphRebuildInShadowPass(SodiumWorldRenderer worldRenderer) {

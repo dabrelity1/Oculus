@@ -6,7 +6,7 @@ import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Redirect;
 
-import org.embeddedt.embeddium.client.render.chunk.shader.ChunkProgram;
+import me.jellysquid.mods.sodium.client.render.chunk.shader.ChunkProgram;
 import net.coderbot.iris.gl.IrisRenderSystem;
 
 /**

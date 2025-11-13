@@ -10,10 +10,10 @@ import org.spongepowered.asm.mixin.injection.Slice;
 
 import com.mojang.blaze3d.platform.GlStateManager;
 
-import org.embeddedt.embeddium.client.gui.SodiumGameOptionPages;
-import org.embeddedt.embeddium.client.gui.options.Option;
-import org.embeddedt.embeddium.client.gui.options.OptionGroup;
-import org.embeddedt.embeddium.client.gui.options.storage.MinecraftOptionsStorage;
+import me.jellysquid.mods.sodium.client.gui.SodiumGameOptionPages;
+import me.jellysquid.mods.sodium.client.gui.options.Option;
+import me.jellysquid.mods.sodium.client.gui.options.OptionGroup;
+import me.jellysquid.mods.sodium.client.gui.options.storage.MinecraftOptionsStorage;
 import net.coderbot.iris.Iris;
 import net.coderbot.iris.compat.sodium.impl.options.IrisSodiumOptions;
 
@@ -32,9 +32,9 @@ public class MixinSodiumGameOptionPages {
 					to = @At(value = "CONSTANT", args = "stringValue=options.gamma")
 			),
 			at = @At(value = "INVOKE", remap = false,
-					target = "org/embeddedt/embeddium/client/gui/options/OptionGroup$Builder.add (" +
-						"Lorg/embeddedt/embeddium/client/gui/options/Option;" +
-						")Lorg/embeddedt/embeddium/client/gui/options/OptionGroup$Builder;"),
+					target = "me/jellysquid/mods/sodium/client/gui/options/OptionGroup$Builder.add (" +
+						"Lme/jellysquid/mods/sodium/client/gui/options/Option;" +
+					")Lme/jellysquid/mods/sodium/client/gui/options/OptionGroup$Builder;"),
 			allow = 1)
 	private static OptionGroup.Builder iris$addMaxShadowDistanceOption(OptionGroup.Builder builder,
 																	   Option<?> candidate) {
@@ -51,9 +51,9 @@ public class MixinSodiumGameOptionPages {
 					to = @At(value = "CONSTANT", args = "stringValue=options.renderClouds")
 			),
 			at = @At(value = "INVOKE", remap = false,
-					target = "org/embeddedt/embeddium/client/gui/options/OptionGroup$Builder.add (" +
-							"Lorg/embeddedt/embeddium/client/gui/options/Option;" +
-						")Lorg/embeddedt/embeddium/client/gui/options/OptionGroup$Builder;"),
+					target = "me/jellysquid/mods/sodium/client/gui/options/OptionGroup$Builder.add (" +
+						"Lme/jellysquid/mods/sodium/client/gui/options/Option;" +
+					")Lme/jellysquid/mods/sodium/client/gui/options/OptionGroup$Builder;"),
 			allow = 1)
 	private static Option<?> iris$replaceGraphicsQualityButton(Option<?> candidate) {
 		if (!Iris.getIrisConfig().areShadersEnabled() && GlStateManager.supportsFramebufferBlit()) {

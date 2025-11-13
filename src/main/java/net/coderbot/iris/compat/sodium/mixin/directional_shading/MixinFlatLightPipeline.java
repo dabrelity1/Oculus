@@ -1,6 +1,6 @@
 package net.coderbot.iris.compat.sodium.mixin.directional_shading;
 
-import org.embeddedt.embeddium.client.model.light.flat.FlatLightPipeline;
+import me.jellysquid.mods.sodium.client.model.light.flat.FlatLightPipeline;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Redirect;

@@ -4,8 +4,8 @@ import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Redirect;
 
-import org.embeddedt.embeddium.client.gui.SodiumGameOptions;
-import org.embeddedt.embeddium.client.render.chunk.ChunkRenderManager;
+import me.jellysquid.mods.sodium.client.gui.SodiumGameOptions;
+import me.jellysquid.mods.sodium.client.render.chunk.ChunkRenderManager;
 import net.coderbot.iris.Iris;
 
 /**
@@ -15,7 +15,7 @@ import net.coderbot.iris.Iris;
 public class MixinChunkRenderManager {
 	@Redirect(method = "setup", remap = false,
 			at = @At(value = "FIELD",
-				target = "org/embeddedt/embeddium/client/gui/SodiumGameOptions$AdvancedSettings.useFogOcclusion : Z",
+				target = "me/jellysquid/mods/sodium/client/gui/SodiumGameOptions$AdvancedSettings.useFogOcclusion : Z",
 				remap = false))
 	private boolean iris$disableFogOcclusion(SodiumGameOptions.AdvancedSettings settings) {
 		if (Iris.getCurrentPack().isPresent()) {

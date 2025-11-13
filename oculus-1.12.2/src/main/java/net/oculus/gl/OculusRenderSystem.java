@@ -46,6 +46,10 @@ public final class OculusRenderSystem {
         glCompileShader(shaderId);
     }
 
+    public static void glShaderSource(int shaderId, String source) {
+        GL20.glShaderSource(shaderId, source);
+    }
+
     public static int glGetShaderi(int shaderId, int pname) {
         return GL20.glGetShaderi(shaderId, pname);
     }

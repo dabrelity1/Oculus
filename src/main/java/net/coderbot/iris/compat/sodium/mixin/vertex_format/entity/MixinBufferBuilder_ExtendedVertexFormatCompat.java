@@ -8,8 +8,8 @@ import org.spongepowered.asm.mixin.injection.ModifyVariable;
 import com.mojang.blaze3d.vertex.BufferBuilder;
 import com.mojang.blaze3d.vertex.VertexFormat;
 
-import org.embeddedt.embeddium.client.model.vertex.VanillaVertexTypes;
-import org.embeddedt.embeddium.client.model.vertex.type.VertexType;
+import me.jellysquid.mods.sodium.client.model.vertex.VanillaVertexTypes;
+import me.jellysquid.mods.sodium.client.model.vertex.type.VertexType;
 import net.coderbot.iris.compat.sodium.impl.vertex_format.entity_xhfp.ExtendedGlyphVertexType;
 import net.coderbot.iris.compat.sodium.impl.vertex_format.entity_xhfp.ExtendedQuadVertexType;
 import net.coderbot.iris.vertices.IrisVertexFormats;
@@ -25,7 +25,7 @@ public class MixinBufferBuilder_ExtendedVertexFormatCompat {
 	private VertexFormat format;
 
 	@SuppressWarnings("target")
-	@ModifyVariable(method = "createSink(Lorg/embeddedt/embeddium/client/model/vertex/type/VertexType;)Lorg/embeddedt/embeddium/client/model/vertex/VertexSink;",
+	@ModifyVariable(method = "createSink(Lme/jellysquid/mods/sodium/client/model/vertex/type/VertexType;)Lme/jellysquid/mods/sodium/client/model/vertex/VertexSink;",
 		at = @At("HEAD"), remap = false)
 	private VertexType<?> iris$createSink(VertexType<?> type) {
 		if (format == IrisVertexFormats.ENTITY) {

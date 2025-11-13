@@ -6,17 +6,17 @@ import net.minecraft.block.state.IBlockState;
 import net.minecraft.util.EnumBlockRenderType;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.world.IBlockAccess;
-import org.embeddedt.embeddium.client.render.chunk.compile.ChunkBuildBuffers;
-import org.embeddedt.embeddium.client.render.chunk.compile.ChunkBuildResult;
-import org.embeddedt.embeddium.client.render.chunk.compile.buffers.ChunkModelBuffers;
-import org.embeddedt.embeddium.client.render.chunk.data.ChunkRenderBounds;
-import org.embeddedt.embeddium.client.render.chunk.data.ChunkRenderData;
-import org.embeddedt.embeddium.client.render.chunk.tasks.ChunkRenderRebuildTask;
-import org.embeddedt.embeddium.client.render.pipeline.FluidRenderer;
-import org.embeddedt.embeddium.client.render.pipeline.context.ChunkRenderCacheLocal;
-import org.embeddedt.embeddium.client.util.MathUtil;
-import org.embeddedt.embeddium.client.util.task.CancellationSource;
-import org.embeddedt.embeddium.client.world.WorldSlice;
+import me.jellysquid.mods.sodium.client.render.chunk.compile.ChunkBuildBuffers;
+import me.jellysquid.mods.sodium.client.render.chunk.compile.ChunkBuildResult;
+import me.jellysquid.mods.sodium.client.render.chunk.compile.buffers.ChunkModelBuffers;
+import me.jellysquid.mods.sodium.client.render.chunk.data.ChunkRenderBounds;
+import me.jellysquid.mods.sodium.client.render.chunk.data.ChunkRenderData;
+import me.jellysquid.mods.sodium.client.render.chunk.tasks.ChunkRenderRebuildTask;
+import me.jellysquid.mods.sodium.client.render.pipeline.FluidRenderer;
+import me.jellysquid.mods.sodium.client.render.pipeline.context.ChunkRenderCacheLocal;
+import me.jellysquid.mods.sodium.client.util.MathUtil;
+import me.jellysquid.mods.sodium.client.util.task.CancellationSource;
+import me.jellysquid.mods.sodium.client.world.WorldSlice;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
@@ -64,7 +64,7 @@ public class MixinChunkRenderRebuildTask {
 	}
 
 	@Redirect(method = "performBuild", at = @At(value = "INVOKE",
-			target = "Lorg/embeddedt/embeddium/client/util/MathUtil;hashPos(Lnet/minecraft/util/math/BlockPos;)J", remap = false))
+			target = "Lme/jellysquid/mods/sodium/client/util/MathUtil;hashPos(Lnet/minecraft/util/math/BlockPos;)J", remap = false))
 	private long iris$wrapHash(BlockPos pos, ChunkRenderCacheLocal cache, ChunkBuildBuffers buffers) {
 		if (this.iris$contextBuffers != null && this.iris$currentState != null) {
 			this.iris$contextBuffers.iris$setMaterialId(this.iris$currentState, ExtendedDataHelper.BLOCK_RENDER_TYPE);
@@ -74,7 +74,7 @@ public class MixinChunkRenderRebuildTask {
 	}
 
 	@Redirect(method = "performBuild", at = @At(value = "INVOKE",
-			target = "Lorg/embeddedt/embeddium/client/render/pipeline/FluidRenderer;render(Lnet/minecraft/world/IBlockAccess;Lnet/minecraft/block/state/IBlockState;Lnet/minecraft/util/math/BlockPos;Lorg/embeddedt/embeddium/client/render/chunk/compile/buffers/ChunkModelBuffers;)Z", remap = false))
+			target = "Lme/jellysquid/mods/sodium/client/render/pipeline/FluidRenderer;render(Lnet/minecraft/world/IBlockAccess;Lnet/minecraft/block/state/IBlockState;Lnet/minecraft/util/math/BlockPos;Lme/jellysquid/mods/sodium/client/render/chunk/compile/buffers/ChunkModelBuffers;)Z", remap = false))
 	private boolean iris$wrapGetFluidLayer(FluidRenderer renderer, IBlockAccess world, IBlockState fluidState, BlockPos pos, ChunkModelBuffers modelBuffers, ChunkRenderCacheLocal cache, ChunkBuildBuffers buffers) {
 		if (this.iris$contextBuffers != null) {
 			this.iris$contextBuffers.iris$setMaterialId(fluidState, ExtendedDataHelper.FLUID_RENDER_TYPE);
