@@ -3,23 +3,43 @@ package net.oculus.gl.shader;
 import net.oculus.gl.GLDebug;
 import net.oculus.gl.GlResource;
 import net.oculus.gl.OculusRenderSystem;
+import net.oculus.shaderpack.ProgramLoadException;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+import org.lwjgl.opengl.GL11;
+import org.lwjgl.opengl.GL20;
 
 /**
- * Bare-bones shader wrapper based on the 1.16.5 implementation. The actual OpenGL
- * calls are deferred, but the structure mirrors the upstream class so later ports can
- * fill in the real behaviour without touching call sites.
+ * Compiled shader object backed by the legacy LWJGL 2 OpenGL bindings.
  */
 public class GlShader extends GlResource {
+    private static final Logger LOGGER = LogManager.getLogger(GlShader.class);
+
+    private static final int GL_DEBUG_SHADER = 0x82E1; // GL_SHADER for KHR_debug naming
+
     private final String name;
     private final ShaderType type;
 
     public GlShader(ShaderType type, String name, String source) {
-        super(OculusRenderSystem.createShader());
+        super(OculusRenderSystem.glCreateShader(type.id));
         this.name = name;
         this.type = type;
 
-        ShaderWorkarounds.safeShaderSource(getGlId(), source);
-        GLDebug.nameObject(type.id, getGlId(), name);
+    OculusRenderSystem.glShaderSource(getGlId(), source);
+        OculusRenderSystem.glCompileShader(getGlId());
+
+        GLDebug.nameObject(GL_DEBUG_SHADER, getGlId(), name);
+
+        int logLength = OculusRenderSystem.glGetShaderi(getGlId(), GL20.GL_INFO_LOG_LENGTH);
+        String log = OculusRenderSystem.glGetShaderInfoLog(getGlId(), logLength);
+        if (!log.isEmpty()) {
+            LOGGER.warn("Shader compilation log for {}: {}", name, log);
+        }
+
+        int status = OculusRenderSystem.glGetShaderi(getGlId(), GL20.GL_COMPILE_STATUS);
+        if (status != GL11.GL_TRUE) {
+            throw new ProgramLoadException("Failed to compile shader " + name + " (" + type + ")\n" + log);
+        }
     }
 
     public String getName() {
@@ -36,6 +56,6 @@ public class GlShader extends GlResource {
 
     @Override
     protected void destroyInternal() {
-        OculusRenderSystem.deleteShader(getGlId());
+        OculusRenderSystem.glDeleteShader(getGlId());
     }
 }

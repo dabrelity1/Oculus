@@ -20,7 +20,7 @@ public class Program extends GlResource {
     }
 
     public void use() {
-        OculusRenderSystem.useProgram(getGlId());
+        OculusRenderSystem.glUseProgram(getGlId());
         uniforms.update();
         samplers.update();
         images.update();
@@ -29,12 +29,14 @@ public class Program extends GlResource {
     public static void unbind() {
         ProgramUniforms.clearActiveUniforms();
         ProgramSamplers.clearActiveSamplers();
-        OculusRenderSystem.useProgram(0);
+        OculusRenderSystem.glUseProgram(0);
     }
 
     @Override
     protected void destroyInternal() {
-        OculusRenderSystem.deleteProgram(getGlId());
+        ProgramUniforms.clearActiveUniforms();
+        ProgramSamplers.clearActiveSamplers();
+        OculusRenderSystem.glDeleteProgram(getGlId());
     }
 
     public int getProgramId() {

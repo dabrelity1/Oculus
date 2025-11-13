@@ -3,11 +3,11 @@ package net.coderbot.iris.compat.sodium.impl.vertex_format.entity_xhfp;
 import com.mojang.blaze3d.vertex.VertexConsumer;
 import com.mojang.blaze3d.vertex.VertexFormat;
 
-import me.jellysquid.mods.sodium.client.model.vertex.buffer.VertexBufferView;
-import me.jellysquid.mods.sodium.client.model.vertex.formats.glyph.GlyphVertexSink;
-import me.jellysquid.mods.sodium.client.model.vertex.formats.glyph.writer.GlyphVertexWriterFallback;
-import me.jellysquid.mods.sodium.client.model.vertex.type.BlittableVertexType;
-import me.jellysquid.mods.sodium.client.model.vertex.type.VanillaVertexType;
+import org.embeddedt.embeddium.client.model.vertex.buffer.VertexBufferView;
+import org.embeddedt.embeddium.client.model.vertex.formats.glyph.GlyphVertexSink;
+import org.embeddedt.embeddium.client.model.vertex.formats.glyph.writer.GlyphVertexWriterFallback;
+import org.embeddedt.embeddium.client.model.vertex.type.BlittableVertexType;
+import org.embeddedt.embeddium.client.model.vertex.type.VanillaVertexType;
 import net.coderbot.iris.vertices.IrisVertexFormats;
 
 public class ExtendedGlyphVertexType implements VanillaVertexType<GlyphVertexSink>, BlittableVertexType<GlyphVertexSink> {

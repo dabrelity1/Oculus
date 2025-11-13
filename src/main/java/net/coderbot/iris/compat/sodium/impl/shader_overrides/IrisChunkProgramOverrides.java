@@ -4,16 +4,15 @@ import java.util.EnumMap;
 import java.util.Locale;
 import java.util.Optional;
 
+import org.embeddedt.embeddium.client.gl.device.RenderDevice;
+import org.embeddedt.embeddium.client.gl.shader.GlProgram;
+import org.embeddedt.embeddium.client.gl.shader.GlShader;
+import org.embeddedt.embeddium.client.gl.shader.ShaderConstants;
+import org.embeddedt.embeddium.client.gl.shader.ShaderType;
+import org.embeddedt.embeddium.client.render.chunk.passes.BlockRenderPass;
+import org.embeddedt.embeddium.client.render.chunk.shader.ChunkProgram;
+import org.embeddedt.embeddium.client.render.chunk.shader.ChunkShaderBindingPoints;
 import org.jetbrains.annotations.Nullable;
-
-import me.jellysquid.mods.sodium.client.gl.device.RenderDevice;
-import me.jellysquid.mods.sodium.client.gl.shader.GlProgram;
-import me.jellysquid.mods.sodium.client.gl.shader.GlShader;
-import me.jellysquid.mods.sodium.client.gl.shader.ShaderConstants;
-import me.jellysquid.mods.sodium.client.gl.shader.ShaderType;
-import me.jellysquid.mods.sodium.client.render.chunk.passes.BlockRenderPass;
-import me.jellysquid.mods.sodium.client.render.chunk.shader.ChunkProgram;
-import me.jellysquid.mods.sodium.client.render.chunk.shader.ChunkShaderBindingPoints;
 import net.coderbot.iris.Iris;
 import net.coderbot.iris.compat.sodium.impl.IrisChunkShaderBindingPoints;
 import net.coderbot.iris.gl.program.ProgramImages;
@@ -22,7 +21,7 @@ import net.coderbot.iris.gl.program.ProgramUniforms;
 import net.coderbot.iris.pipeline.SodiumTerrainPipeline;
 import net.coderbot.iris.pipeline.WorldRenderingPipeline;
 import net.coderbot.iris.shadows.ShadowRenderingState;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.util.ResourceLocation;
 
 public class IrisChunkProgramOverrides {
 	private static final ShaderConstants EMPTY_CONSTANTS = ShaderConstants.builder().build();

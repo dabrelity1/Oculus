@@ -5,11 +5,11 @@ import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.ModifyArg;
 
-import me.jellysquid.mods.sodium.client.gl.attribute.GlVertexAttributeBinding;
-import me.jellysquid.mods.sodium.client.model.vertex.type.ChunkVertexType;
-import me.jellysquid.mods.sodium.client.render.chunk.backends.multidraw.MultidrawChunkRenderBackend;
-import me.jellysquid.mods.sodium.client.render.chunk.backends.multidraw.MultidrawGraphicsState;
-import me.jellysquid.mods.sodium.client.render.chunk.shader.ChunkRenderShaderBackend;
+import org.embeddedt.embeddium.client.gl.attribute.GlVertexAttributeBinding;
+import org.embeddedt.embeddium.client.model.vertex.type.ChunkVertexType;
+import org.embeddedt.embeddium.client.render.chunk.backends.multidraw.MultidrawChunkRenderBackend;
+import org.embeddedt.embeddium.client.render.chunk.backends.multidraw.MultidrawGraphicsState;
+import org.embeddedt.embeddium.client.render.chunk.shader.ChunkRenderShaderBackend;
 import net.coderbot.iris.block_rendering.BlockRenderingSettings;
 import net.coderbot.iris.compat.sodium.impl.IrisChunkShaderBindingPoints;
 import net.coderbot.iris.compat.sodium.impl.vertex_format.IrisChunkMeshAttributes;
@@ -23,11 +23,11 @@ public abstract class MixinMultidrawChunkRenderBackend extends ChunkRenderShader
 
 	@ModifyArg(method = "createRegionTessellation", remap = false,
 			at = @At(value = "INVOKE",
-					target = "me/jellysquid/mods/sodium/client/gl/tessellation/TessellationBinding.<init> (" +
-								"Lme/jellysquid/mods/sodium/client/gl/buffer/GlBuffer;" +
-								"[Lme/jellysquid/mods/sodium/client/gl/attribute/GlVertexAttributeBinding;" +
-								"Z" +
-							")V",
+					target = "org/embeddedt/embeddium/client/gl/tessellation/TessellationBinding.<init> (" +
+							"Lorg/embeddedt/embeddium/client/gl/buffer/GlBuffer;" +
+							"[Lorg/embeddedt/embeddium/client/gl/attribute/GlVertexAttributeBinding;" +
+							"Z" +
+						")V",
 					remap = false,
 					ordinal = 0))
 	private GlVertexAttributeBinding[] iris$addAdditionalBindings(GlVertexAttributeBinding[] base) {

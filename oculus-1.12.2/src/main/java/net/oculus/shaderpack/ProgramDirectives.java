@@ -2,10 +2,12 @@ package net.oculus.shaderpack;
 
 import java.util.Arrays;
 import java.util.Collections;
-import java.util.HashSet;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
+
+import net.oculus.gl.blending.BlendModeOverride;
 
 /**
  * Lightweight representation of shader directives parsed from pack metadata.
@@ -17,16 +19,25 @@ public final class ProgramDirectives {
     private final Map<Integer, Boolean> explicitFlips;
     private final float viewportScale;
     private final Set<Integer> mipmappedBuffers;
+    private final Optional<BlendModeOverride> blendModeOverride;
 
     public ProgramDirectives() {
-        this(new int[] {0}, Collections.emptyMap(), 1.0F, Collections.emptySet());
+        this(new int[] {0}, Collections.emptyMap(), 1.0F, Collections.emptySet(), Optional.empty());
     }
 
-    public ProgramDirectives(int[] drawBuffers, Map<Integer, Boolean> explicitFlips, float viewportScale, Set<Integer> mipmappedBuffers) {
+    public ProgramDirectives(ProgramSet parent, String programName, ShaderProperties properties,
+                             BlendModeOverride defaultOverride) {
+        this(new int[] {0}, parent.getPackDirectives().getExplicitFlips(programName), 1.0F,
+            Collections.emptySet(), Optional.ofNullable(defaultOverride));
+    }
+
+    private ProgramDirectives(int[] drawBuffers, Map<Integer, Boolean> explicitFlips, float viewportScale,
+                              Set<Integer> mipmappedBuffers, Optional<BlendModeOverride> blendModeOverride) {
         this.drawBuffers = Objects.requireNonNull(drawBuffers, "drawBuffers");
         this.explicitFlips = explicitFlips == null ? Collections.emptyMap() : explicitFlips;
         this.viewportScale = viewportScale;
-        this.mipmappedBuffers = mipmappedBuffers == null ? Collections.emptySet() : new HashSet<>(mipmappedBuffers);
+        this.mipmappedBuffers = mipmappedBuffers == null ? Collections.emptySet() : Collections.unmodifiableSet(mipmappedBuffers);
+        this.blendModeOverride = blendModeOverride == null ? Optional.empty() : blendModeOverride;
     }
 
     public int[] getDrawBuffers() {
@@ -42,10 +53,14 @@ public final class ProgramDirectives {
     }
 
     public Set<Integer> getMipmappedBuffers() {
-        return Collections.unmodifiableSet(mipmappedBuffers);
+        return mipmappedBuffers;
+    }
+
+    public Optional<BlendModeOverride> getBlendModeOverride() {
+        return blendModeOverride;
     }
 
     public ProgramDirectives withOverriddenDrawBuffers(int[] newDrawBuffers) {
-        return new ProgramDirectives(newDrawBuffers, explicitFlips, viewportScale, mipmappedBuffers);
+        return new ProgramDirectives(newDrawBuffers, explicitFlips, viewportScale, mipmappedBuffers, blendModeOverride);
     }
 }

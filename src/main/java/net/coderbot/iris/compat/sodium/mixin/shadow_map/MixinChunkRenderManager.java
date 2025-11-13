@@ -14,14 +14,14 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 import it.unimi.dsi.fastutil.objects.ObjectArrayFIFOQueue;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import it.unimi.dsi.fastutil.objects.ObjectList;
-import me.jellysquid.mods.sodium.client.render.SodiumWorldRenderer;
-import me.jellysquid.mods.sodium.client.render.chunk.ChunkRenderBackend;
-import me.jellysquid.mods.sodium.client.render.chunk.ChunkRenderContainer;
-import me.jellysquid.mods.sodium.client.render.chunk.ChunkRenderManager;
-import me.jellysquid.mods.sodium.client.render.chunk.cull.ChunkFaceFlags;
-import me.jellysquid.mods.sodium.client.render.chunk.lists.ChunkRenderList;
-import me.jellysquid.mods.sodium.client.render.chunk.passes.BlockRenderPass;
-import me.jellysquid.mods.sodium.client.render.chunk.passes.BlockRenderPassManager;
+import org.embeddedt.embeddium.client.render.SodiumWorldRenderer;
+import org.embeddedt.embeddium.client.render.chunk.ChunkRenderBackend;
+import org.embeddedt.embeddium.client.render.chunk.ChunkRenderContainer;
+import org.embeddedt.embeddium.client.render.chunk.ChunkRenderManager;
+import org.embeddedt.embeddium.client.render.chunk.cull.ChunkFaceFlags;
+import org.embeddedt.embeddium.client.render.chunk.lists.ChunkRenderList;
+import org.embeddedt.embeddium.client.render.chunk.passes.BlockRenderPass;
+import org.embeddedt.embeddium.client.render.chunk.passes.BlockRenderPassManager;
 import net.coderbot.iris.compat.sodium.impl.shadow_map.SwappableChunkRenderManager;
 import net.coderbot.iris.shadows.ShadowRenderingState;
 import net.minecraft.client.multiplayer.ClientLevel;
@@ -120,7 +120,7 @@ public class MixinChunkRenderManager implements SwappableChunkRenderManager {
 
 	@Redirect(method = "addChunk", remap = false,
 			at = @At(value = "INVOKE",
-					target = "me/jellysquid/mods/sodium/client/render/chunk/ChunkRenderContainer.canRebuild ()Z",
+					target = "org/embeddedt/embeddium/client/render/chunk/ChunkRenderContainer.canRebuild ()Z",
 					remap = false))
 	private boolean iris$noRebuildEnqueueingInShadowPass(ChunkRenderContainer<?> render) {
 		if (ShadowRenderingState.areShadowsCurrentlyBeingRendered()) {
@@ -141,8 +141,8 @@ public class MixinChunkRenderManager implements SwappableChunkRenderManager {
 
 	@Redirect(method = "reset()V", remap = false,
 			at = @At(value = "FIELD",
-					target = "me/jellysquid/mods/sodium/client/render/chunk/ChunkRenderManager.rebuildQueue :" +
-								 "Lit/unimi/dsi/fastutil/objects/ObjectArrayFIFOQueue;",
+					target = "org/embeddedt/embeddium/client/render/chunk/ChunkRenderManager.rebuildQueue :" +
+							 "Lit/unimi/dsi/fastutil/objects/ObjectArrayFIFOQueue;",
 					remap = false))
 	private ObjectArrayFIFOQueue<?> iris$noQueueClearingInShadowPass$rebuildQueue(ChunkRenderManager<?> manager) {
 		if (ShadowRenderingState.areShadowsCurrentlyBeingRendered()) {
@@ -154,8 +154,8 @@ public class MixinChunkRenderManager implements SwappableChunkRenderManager {
 
 	@Redirect(method = "reset()V", remap = false,
 			at = @At(value = "FIELD",
-					target = "me/jellysquid/mods/sodium/client/render/chunk/ChunkRenderManager.importantRebuildQueue :" +
-								 "Lit/unimi/dsi/fastutil/objects/ObjectArrayFIFOQueue;",
+					target = "org/embeddedt/embeddium/client/render/chunk/ChunkRenderManager.importantRebuildQueue :" +
+							 "Lit/unimi/dsi/fastutil/objects/ObjectArrayFIFOQueue;",
 					remap = false))
 	private ObjectArrayFIFOQueue<?> iris$noQueueClearingInShadowPass$importantRebuildQueue(ChunkRenderManager<?> manager) {
 		if (ShadowRenderingState.areShadowsCurrentlyBeingRendered()) {

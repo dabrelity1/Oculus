@@ -5,28 +5,25 @@ import java.util.function.BooleanSupplier;
 import net.minecraft.client.renderer.GlStateManager;
 import org.lwjgl.opengl.GL11;
 import org.lwjgl.opengl.GL13;
+import org.lwjgl.opengl.GL14;
 
 /**
- * Translation Facade for Mojang's {@code RenderSystem}. Each method mirrors the signature
- * used by the 1.16.5 pipeline but delegates to the appropriate 1.12.2 {@code GlStateManager}
- * or OpenGL call to provide actual functionality.
+ * Translation facade for Mojang's {@code RenderSystem}. Each method mirrors the
+ * 1.16.5 signature but forwards to the closest 1.12.2-era implementation so
+ * existing rendering logic keeps working.
  */
 public final class RenderSystem {
+    private static final int MAX_TEXTURE_UNITS = 16;
+
     private RenderSystem() {
     }
 
-    /**
-     * No direct equivalent in 1.12.2; used for 1.16.5 shader initialization.
-     */
     public static void initializeShaderPipeline() {
-        // No 1.12.2 equivalent - modern shader initialization
+        // 1.12.2 has no concept of the shader pipeline bootstrap.
     }
 
-    /**
-     * No direct equivalent in 1.12.2; used for 1.16.5 shader cleanup.
-     */
     public static void releaseShaderPipeline() {
-        // No 1.12.2 equivalent - modern shader cleanup
+        // Nothing to release in the legacy pipeline.
     }
 
     public static void pushMatrix() {
@@ -53,27 +50,20 @@ public final class RenderSystem {
         GlStateManager.scale(x, y, z);
     }
 
-    public static void color4f(float r, float g, float b, float a) {
-        GlStateManager.color(r, g, b, a);
+    public static void color4f(float red, float green, float blue, float alpha) {
+        GlStateManager.color(red, green, blue, alpha);
     }
 
-    public static void color3f(float r, float g, float b) {
-        GlStateManager.color(r, g, b, 1.0F);
+    public static void color3f(float red, float green, float blue) {
+        GlStateManager.color(red, green, blue, 1.0F);
     }
 
     public static void setShaderColor(float red, float green, float blue, float alpha) {
-        // In 1.16.5 this sets shader uniform color; in 1.12.2 we use fixed-function color
         GlStateManager.color(red, green, blue, alpha);
     }
 
     public static void blendColor(float red, float green, float blue, float alpha) {
-        GlStateManager.tryBlendFuncSeparate(
-            GlStateManager.SourceFactor.CONSTANT_COLOR.factor,
-            GlStateManager.DestFactor.ONE_MINUS_CONSTANT_COLOR.factor,
-            GlStateManager.SourceFactor.CONSTANT_ALPHA.factor,
-            GlStateManager.DestFactor.ONE_MINUS_CONSTANT_ALPHA.factor
-        );
-        GL11.glBlendColor(red, green, blue, alpha);
+        GL14.glBlendColor(red, green, blue, alpha);
     }
 
     public static void enableBlend() {
@@ -85,12 +75,7 @@ public final class RenderSystem {
     }
 
     public static void defaultBlendFunc() {
-        GlStateManager.tryBlendFuncSeparate(
-            GlStateManager.SourceFactor.SRC_ALPHA.factor,
-            GlStateManager.DestFactor.ONE_MINUS_SRC_ALPHA.factor,
-            GlStateManager.SourceFactor.ONE.factor,
-            GlStateManager.DestFactor.ZERO.factor
-        );
+        GlStateManager.tryBlendFuncSeparate(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA, GL11.GL_ONE, GL11.GL_ZERO);
     }
 
     public static void enableAlphaTest() {
@@ -113,8 +98,8 @@ public final class RenderSystem {
         GlStateManager.disableDepth();
     }
 
-    public static void depthMask(boolean mask) {
-        GlStateManager.depthMask(mask);
+    public static void depthMask(boolean flag) {
+        GlStateManager.depthMask(flag);
     }
 
     public static void enableTexture() {
@@ -133,8 +118,8 @@ public final class RenderSystem {
         GlStateManager.disableCull();
     }
 
-    public static void activeTexture(int unit) {
-        GlStateManager.setActiveTexture(unit);
+    public static void activeTexture(int texture) {
+        GlStateManager.setActiveTexture(texture);
     }
 
     public static void bindTexture(int texture) {
@@ -142,13 +127,12 @@ public final class RenderSystem {
     }
 
     public static void resetTextureBindings() {
-        // Reset all texture units to 0
-        for (int i = 0; i < 16; i++) {
-            GL13.glActiveTexture(GL13.GL_TEXTURE0 + i);
+        for (int unit = 0; unit < MAX_TEXTURE_UNITS; unit++) {
+            GlStateManager.setActiveTexture(GL13.GL_TEXTURE0 + unit);
             GlStateManager.bindTexture(0);
         }
-        // Reset back to texture unit 0
-        GL13.glActiveTexture(GL13.GL_TEXTURE0);
+
+        GlStateManager.setActiveTexture(GL13.GL_TEXTURE0);
     }
 
     public static void viewport(int x, int y, int width, int height) {
@@ -163,11 +147,8 @@ public final class RenderSystem {
         GlStateManager.clearColor(red, green, blue, alpha);
     }
 
-    /**
-     * No direct equivalent in 1.12.2; used for thread safety checks in 1.16.5.
-     */
     public static void assertThread(BooleanSupplier predicate) {
-        // No 1.12.2 equivalent - modern render thread assertion
+        predicate.getAsBoolean();
     }
 
     public static boolean isOnRenderThread() {

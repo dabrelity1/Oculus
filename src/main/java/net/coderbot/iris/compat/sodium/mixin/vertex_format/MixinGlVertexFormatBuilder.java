@@ -6,9 +6,9 @@ import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Redirect;
 
-import me.jellysquid.mods.sodium.client.gl.attribute.GlVertexAttribute;
-import me.jellysquid.mods.sodium.client.gl.attribute.GlVertexAttributeFormat;
-import me.jellysquid.mods.sodium.client.gl.attribute.GlVertexFormat;
+import org.embeddedt.embeddium.client.gl.attribute.GlVertexAttribute;
+import org.embeddedt.embeddium.client.gl.attribute.GlVertexAttributeFormat;
+import org.embeddedt.embeddium.client.gl.attribute.GlVertexFormat;
 import net.coderbot.iris.compat.sodium.impl.vertex_format.IrisChunkMeshAttributes;
 
 @Mixin(GlVertexFormat.Builder.class)

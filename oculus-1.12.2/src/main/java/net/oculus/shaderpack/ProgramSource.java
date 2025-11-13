@@ -1,91 +1,76 @@
 package net.oculus.shaderpack;
 
-import java.util.Objects;
 import java.util.Optional;
 
+import net.oculus.gl.blending.BlendModeOverride;
+
 /**
- * Skeleton wrapper around a shader program definition. The modern Iris code
- * keeps GLSL sources, directives, and parent metadata; the 1.12 port mirrors
- * the public surface so the pipeline can be compiled incrementally.
+ * Port of the Iris {@code ProgramSource}. All behaviour related to directive
+ * parsing and shader compilation is stubbed, but the public surface matches the
+ * upstream implementation so dependent systems can be migrated verbatim.
  */
 public final class ProgramSource {
     private final String name;
-    private final ProgramSet parent;
-    private final Optional<String> vertexSource;
-    private final Optional<String> geometrySource;
-    private final Optional<String> fragmentSource;
-    private final boolean valid;
+    private final String vertexSource;
+    private final String geometrySource;
+    private final String fragmentSource;
     private final ProgramDirectives directives;
+    private final ProgramSet parent;
 
-    private ProgramSource(String name, ProgramSet parent, Optional<String> vertexSource, Optional<String> geometrySource,
-                          Optional<String> fragmentSource, boolean valid, ProgramDirectives directives) {
-        this.name = Objects.requireNonNull(name, "name");
-        this.parent = parent;
+    private ProgramSource(String name, String vertexSource, String geometrySource, String fragmentSource,
+                          ProgramDirectives directives, ProgramSet parent) {
+        this.name = name;
         this.vertexSource = vertexSource;
         this.geometrySource = geometrySource;
         this.fragmentSource = fragmentSource;
-        this.valid = valid;
-        this.directives = directives == null ? new ProgramDirectives() : directives;
+        this.directives = directives;
+        this.parent = parent;
     }
 
     public static ProgramSource missing(String name) {
-        return new ProgramSource(name, null, Optional.empty(), Optional.empty(), Optional.empty(), false, new ProgramDirectives());
+        return new ProgramSource(name, null, null, null, new ProgramDirectives(), null);
     }
 
-    public static ProgramSource create(String name, ProgramSet parent, String vertexSource, String geometrySource,
-                                       String fragmentSource) {
-        boolean hasVertex = vertexSource != null && !vertexSource.isEmpty();
-        boolean hasFragment = fragmentSource != null && !fragmentSource.isEmpty();
-        boolean isValid = hasVertex && hasFragment;
-        Optional<String> vertex = hasVertex ? Optional.of(vertexSource) : Optional.empty();
-        Optional<String> geometry = geometrySource == null || geometrySource.isEmpty() ? Optional.empty() : Optional.of(geometrySource);
-        Optional<String> fragment = hasFragment ? Optional.of(fragmentSource) : Optional.empty();
+    public ProgramSource(String name, String vertexSource, String geometrySource, String fragmentSource,
+                         ProgramSet parent, ShaderProperties properties, BlendModeOverride defaultBlendModeOverride) {
+        this(name, vertexSource, geometrySource, fragmentSource,
+            new ProgramDirectives(parent, name, properties, defaultBlendModeOverride), parent);
+    }
 
-        if (!isValid) {
-            return missing(name);
-        }
-
-        return new ProgramSource(name, parent, vertex, geometry, fragment, true, new ProgramDirectives());
+    public ProgramSource withDirectiveOverride(ProgramDirectives overrideDirectives) {
+        return new ProgramSource(name, vertexSource, geometrySource, fragmentSource,
+            overrideDirectives == null ? directives : overrideDirectives, parent);
     }
 
     public String getName() {
         return name;
     }
 
+    public Optional<String> getVertexSource() {
+        return Optional.ofNullable(vertexSource);
+    }
+
+    public Optional<String> getGeometrySource() {
+        return Optional.ofNullable(geometrySource);
+    }
+
+    public Optional<String> getFragmentSource() {
+        return Optional.ofNullable(fragmentSource);
+    }
+
+    public ProgramDirectives getDirectives() {
+        return this.directives;
+    }
+
     public ProgramSet getParent() {
         return parent;
     }
 
-    public Optional<String> getVertexSource() {
-        return vertexSource;
-    }
-
-    public Optional<String> getGeometrySource() {
-        return geometrySource;
-    }
-
-    public Optional<String> getFragmentSource() {
-        return fragmentSource;
-    }
-
-    public ProgramDirectives getDirectives() {
-        return directives;
-    }
-
     public boolean isValid() {
-        return valid;
+        return vertexSource != null && fragmentSource != null;
     }
 
     public Optional<ProgramSource> requireValid() {
-        return valid ? Optional.of(this) : Optional.empty();
-    }
-
-    public ProgramSource withDirectiveOverride(ProgramDirectives newDirectives) {
-        if (!valid) {
-            return this;
-        }
-
-        return new ProgramSource(name, parent, vertexSource, geometrySource, fragmentSource, true,
-            newDirectives == null ? directives : newDirectives);
+        return this.isValid() ? Optional.of(this) : Optional.empty();
     }
 }

@@ -1,9 +1,9 @@
 package net.coderbot.iris.compat.sodium.impl.vertex_format.terrain_xhfp;
 
-import me.jellysquid.mods.sodium.client.model.vertex.buffer.VertexBufferView;
-import me.jellysquid.mods.sodium.client.model.vertex.buffer.VertexBufferWriterNio;
-import me.jellysquid.mods.sodium.client.render.chunk.format.ModelVertexSink;
-import me.jellysquid.mods.sodium.client.render.chunk.format.ModelVertexUtil;
+import org.embeddedt.embeddium.client.model.vertex.buffer.VertexBufferView;
+import org.embeddedt.embeddium.client.model.vertex.buffer.VertexBufferWriterNio;
+import org.embeddedt.embeddium.client.render.chunk.format.ModelVertexSink;
+import org.embeddedt.embeddium.client.render.chunk.format.ModelVertexUtil;
 import net.coderbot.iris.compat.sodium.impl.block_context.BlockContextHolder;
 import net.coderbot.iris.compat.sodium.impl.block_context.ContextAwareVertexWriter;
 import net.coderbot.iris.compat.sodium.impl.vertex_format.IrisModelVertexFormats;

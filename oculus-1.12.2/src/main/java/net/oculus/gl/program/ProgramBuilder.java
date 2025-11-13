@@ -1,12 +1,24 @@
 package net.oculus.gl.program;
 
+import java.nio.ByteBuffer;
+import java.nio.IntBuffer;
+import java.nio.charset.StandardCharsets;
+import java.util.HashSet;
 import java.util.Objects;
+import java.util.Set;
 import java.util.function.IntSupplier;
 
 import net.oculus.gl.OculusRenderSystem;
 import net.oculus.gl.shader.GlShader;
 import net.oculus.gl.shader.ProgramCreator;
 import net.oculus.gl.shader.ShaderType;
+import net.oculus.gl.state.MatrixState;
+import net.oculus.gl.state.GameDataSuppliers;
+import net.oculus.shaderpack.ProgramLoadException;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+import org.lwjgl.BufferUtils;
+import org.lwjgl.opengl.GL20;
 
 /**
  * A trimmed-down version of the Iris {@code ProgramBuilder}. It exposes the same entry
@@ -14,6 +26,8 @@ import net.oculus.gl.shader.ShaderType;
  * assembled step by step on 1.12.2.
  */
 public final class ProgramBuilder {
+    private static final Logger LOGGER = LogManager.getLogger(ProgramBuilder.class);
+
     private final String name;
     private final int program;
 
@@ -25,8 +39,10 @@ public final class ProgramBuilder {
         this.name = name;
         this.program = program;
         this.uniforms = ProgramUniforms.builder(name, program);
-        this.samplers = ProgramSamplers.builder(program);
+        this.samplers = ProgramSamplers.builder(name, program);
         this.images = ProgramImages.builder(program);
+
+        discoverBuiltInUniforms();
     }
 
     public void bindAttributeLocation(int index, String attribute) {
@@ -81,8 +97,119 @@ public final class ProgramBuilder {
     private static GlShader buildShader(ShaderType type, String name, String source) {
         try {
             return new GlShader(type, name, source);
+        } catch (ProgramLoadException ex) {
+            throw ex;
         } catch (RuntimeException ex) {
-            throw new RuntimeException("Failed to compile " + type + " shader for program " + name, ex);
+            throw new ProgramLoadException("Failed to compile " + type + " shader for program " + name, ex);
+        }
+    }
+
+    private void discoverBuiltInUniforms() {
+        int uniformCount = OculusRenderSystem.glGetProgrami(program, GL20.GL_ACTIVE_UNIFORMS);
+        if (uniformCount <= 0) {
+            return;
+        }
+
+        Set<String> processed = new HashSet<>();
+
+        int maxNameLength = Math.max(32, OculusRenderSystem.glGetProgrami(program, GL20.GL_ACTIVE_UNIFORM_MAX_LENGTH));
+        IntBuffer lengthBuffer = BufferUtils.createIntBuffer(1);
+        IntBuffer sizeBuffer = BufferUtils.createIntBuffer(1);
+        IntBuffer typeBuffer = BufferUtils.createIntBuffer(1);
+        ByteBuffer nameBuffer = BufferUtils.createByteBuffer(maxNameLength);
+
+        for (int index = 0; index < uniformCount; index++) {
+            lengthBuffer.clear();
+            sizeBuffer.clear();
+            typeBuffer.clear();
+            nameBuffer.clear();
+
+            GL20.glGetActiveUniform(program, index, lengthBuffer, sizeBuffer, typeBuffer, nameBuffer);
+
+            int nameLength = lengthBuffer.get(0);
+            if (nameLength <= 0) {
+                continue;
+            }
+
+            byte[] nameBytes = new byte[nameLength];
+            nameBuffer.position(0);
+            nameBuffer.get(nameBytes, 0, nameLength);
+
+            String rawName = new String(nameBytes, StandardCharsets.UTF_8);
+            String uniformName = sanitizeUniformName(rawName);
+            if (uniformName.isEmpty() || uniformName.startsWith("gl_")) {
+                continue;
+            }
+
+            if (!processed.add(uniformName)) {
+                continue;
+            }
+
+            int type = typeBuffer.get(0);
+            handleUniform(uniformName, type);
+        }
+    }
+
+    private static String sanitizeUniformName(String rawName) {
+        int bracketIndex = rawName.indexOf('[');
+        return bracketIndex >= 0 ? rawName.substring(0, bracketIndex) : rawName;
+    }
+
+    private void handleUniform(String uniformName, int glType) {
+        if (isSamplerType(glType)) {
+            samplers.addSampler(uniformName);
+            return;
+        }
+
+        switch (uniformName) {
+            case "modelViewMatrix":
+            case "u_ModelViewMatrix":
+                uniforms.addMat4f(uniformName, MatrixState::updateModelViewMatrix);
+                break;
+            case "projectionMatrix":
+            case "u_ProjectionMatrix":
+                uniforms.addMat4f(uniformName, MatrixState::updateProjectionMatrix);
+                break;
+            case "systemTime":
+            case "u_Time":
+                uniforms.addFloatSupplier(uniformName, GameDataSuppliers.systemTime());
+                break;
+            case "cameraPosition":
+            case "u_CameraPosition":
+                uniforms.addVec3f(uniformName, GameDataSuppliers.cameraPosition());
+                break;
+            case "fogColor":
+            case "u_FogColor":
+                uniforms.addVec4f(uniformName, GameDataSuppliers.fogColor());
+                break;
+            case "fogStart":
+            case "u_FogStart":
+                uniforms.addFloatSupplier(uniformName, GameDataSuppliers.fogStart());
+                break;
+            case "fogEnd":
+            case "u_FogEnd":
+                uniforms.addFloatSupplier(uniformName, GameDataSuppliers.fogEnd());
+                break;
+            case "viewWidth":
+            case "u_ViewWidth":
+                uniforms.addFloatSupplier(uniformName, GameDataSuppliers.viewWidth());
+                break;
+            case "viewHeight":
+            case "u_ViewHeight":
+                uniforms.addFloatSupplier(uniformName, GameDataSuppliers.viewHeight());
+                break;
+            default:
+                LOGGER.warn("Unknown uniform {} in program {}, it will not be updated.", uniformName, this.name);
+        }
+    }
+
+    private static boolean isSamplerType(int glType) {
+        switch (glType) {
+            case GL20.GL_SAMPLER_2D:
+            case GL20.GL_SAMPLER_2D_SHADOW:
+                return true;
+            default:
+                return false;
         }
     }
 

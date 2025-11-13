@@ -1,65 +1,61 @@
 package net.oculus.shaderpack;
 
-import java.util.Objects;
 import java.util.Optional;
 
+import net.oculus.vendored.joml.Vector2f;
+import net.oculus.vendored.joml.Vector3i;
+
 /**
- * Simplified representation of a compute shader entry. Compute shaders are not
- * executed in the 1.12 build yet, but the data model is kept so the pipeline
- * can be wired without large refactors.
+ * Port of the Iris {@code ComputeSource}. Compute shaders are not executed in
+ * the 1.12 build yet, but the data model is kept so the pipeline can be wired
+ * without large refactors.
  */
 public final class ComputeSource {
     private final String name;
+    private final String source;
     private final ProgramSet parent;
-    private final Optional<String> source;
-    private final boolean valid;
-    private boolean workGroupRelative;
-    private int[] workGroups;
+    private Vector3i workGroups;
+    private Vector2f workGroupRelative;
 
-    private ComputeSource(String name, ProgramSet parent, Optional<String> source, boolean valid) {
-        this.name = Objects.requireNonNull(name, "name");
-        this.parent = parent;
+    public ComputeSource(String name, String source, ProgramSet parent) {
+        this.name = name;
         this.source = source;
-        this.valid = valid;
-        this.workGroups = new int[] {1, 1, 1};
-    }
-
-    public static ComputeSource create(String name, ProgramSet parent, String source) {
-        boolean hasSource = source != null && !source.isEmpty();
-        Optional<String> payload = hasSource ? Optional.of(source) : Optional.empty();
-        return new ComputeSource(name, parent, payload, hasSource);
-    }
-
-    public static ComputeSource missing(String name) {
-        return new ComputeSource(name, null, Optional.empty(), false);
+        this.parent = parent;
     }
 
     public String getName() {
         return name;
     }
 
+    public Optional<String> getSource() {
+        return Optional.ofNullable(source);
+    }
+
     public ProgramSet getParent() {
         return parent;
     }
 
-    public Optional<String> getSource() {
-        return source;
-    }
-
     public boolean isValid() {
-        return valid;
+        return source != null;
     }
 
-    public boolean isWorkGroupRelative() {
+    public void setWorkGroups(Vector3i workGroups) {
+        this.workGroups = workGroups;
+    }
+
+    public void setWorkGroupRelative(Vector2f workGroupRelative) {
+        this.workGroupRelative = workGroupRelative;
+    }
+
+    public Vector2f getWorkGroupRelative() {
         return workGroupRelative;
     }
 
-    public int[] getWorkGroups() {
-        return workGroups.clone();
+    public Vector3i getWorkGroups() {
+        return workGroups;
     }
 
-    public void setWorkGroupInfo(boolean workGroupRelative, int[] workGroups) {
-        this.workGroupRelative = workGroupRelative;
-        this.workGroups = workGroups == null ? new int[] {1, 1, 1} : workGroups.clone();
+    public Optional<ComputeSource> requireValid() {
+        return this.isValid() ? Optional.of(this) : Optional.empty();
     }
 }

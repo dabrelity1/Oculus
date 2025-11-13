@@ -2,10 +2,10 @@ package net.coderbot.iris.compat.sodium.impl.block_context;
 
 import it.unimi.dsi.fastutil.objects.Object2IntMap;
 import it.unimi.dsi.fastutil.objects.Object2IntMaps;
-import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.block.state.IBlockState;
 
 public class BlockContextHolder {
-	private final Object2IntMap<BlockState> blockStateIds;
+	private final Object2IntMap<IBlockState> blockStateIds;
 
 	public int localPosX;
 	public int localPosY;
@@ -20,7 +20,7 @@ public class BlockContextHolder {
 		this.renderType = -1;
 	}
 
-	public BlockContextHolder(Object2IntMap<BlockState> idMap) {
+	public BlockContextHolder(Object2IntMap<IBlockState> idMap) {
 		this.blockStateIds = idMap;
 		this.blockId = -1;
 		this.renderType = -1;
@@ -32,7 +32,7 @@ public class BlockContextHolder {
 		this.localPosZ = localPosZ;
 	}
 
-	public void set(BlockState state, short renderType) {
+	public void set(IBlockState state, short renderType) {
 		this.blockId = (short) this.blockStateIds.getOrDefault(state, -1);
 		this.renderType = renderType;
 	}

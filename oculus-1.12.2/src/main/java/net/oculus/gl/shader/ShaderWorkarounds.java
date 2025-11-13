@@ -1,15 +1,20 @@
 package net.oculus.gl.shader;
 
+import net.oculus.gl.OculusRenderSystem;
+
 /**
- * The 1.16.5 pipeline centralises shader source uploads through this helper so that
- * vendor quirks can be addressed in one place. For now we simply expose the same
- * method signature without any behaviour.
+ * Centralises shader source uploads so platform specific workarounds can live in one
+ * place. On 1.12.2 we simply forward to {@link org.lwjgl.opengl.GL20#glShaderSource(int, CharSequence)}.
  */
 public final class ShaderWorkarounds {
     private ShaderWorkarounds() {
     }
 
     public static void safeShaderSource(int shaderHandle, String source) {
-        // No-op stub. Actual implementations will forward to the GL driver.
+        if (source == null) {
+            throw new IllegalArgumentException("Shader source cannot be null");
+        }
+
+        OculusRenderSystem.glShaderSource(shaderHandle, source);
     }
 }

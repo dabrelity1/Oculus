@@ -8,9 +8,9 @@ import org.lwjgl.system.MemoryStack;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.math.Matrix4f;
 
-import me.jellysquid.mods.sodium.client.gl.device.RenderDevice;
-import me.jellysquid.mods.sodium.client.render.chunk.shader.ChunkProgram;
-import me.jellysquid.mods.sodium.client.render.chunk.shader.ChunkShaderFogComponent;
+import org.embeddedt.embeddium.client.gl.device.RenderDevice;
+import org.embeddedt.embeddium.client.render.chunk.shader.ChunkProgram;
+import org.embeddedt.embeddium.client.render.chunk.shader.ChunkShaderFogComponent;
 import net.coderbot.iris.gl.IrisRenderSystem;
 import net.coderbot.iris.gl.program.ProgramImages;
 import net.coderbot.iris.gl.program.ProgramSamplers;

@@ -69,8 +69,10 @@ public final class PipelineManager {
 
     private WorldRenderingPipeline createPipeline(boolean shadersEnabled) {
         if (shadersEnabled) {
-            ProgramSet programs = new ProgramSet(ShaderPack.placeholder(), ShaderProperties.empty());
-            return new ShaderWorldRenderingPipeline(programs);
+            ShaderPack pack = ShaderPack.placeholder();
+            ShaderProperties properties = ShaderProperties.empty();
+            ProgramSet programs = new ProgramSet(pack, properties);
+            return new ShaderWorldRenderingPipeline(pack, programs, properties);
         }
 
         return new FixedFunctionWorldRenderingPipeline();

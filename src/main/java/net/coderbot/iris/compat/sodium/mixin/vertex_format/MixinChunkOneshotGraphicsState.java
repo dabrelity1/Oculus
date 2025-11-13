@@ -6,11 +6,11 @@ import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.ModifyArg;
 
-import me.jellysquid.mods.sodium.client.gl.attribute.GlVertexAttributeBinding;
-import me.jellysquid.mods.sodium.client.gl.attribute.GlVertexFormat;
-import me.jellysquid.mods.sodium.client.gl.buffer.VertexData;
-import me.jellysquid.mods.sodium.client.render.chunk.backends.oneshot.ChunkOneshotGraphicsState;
-import me.jellysquid.mods.sodium.client.render.chunk.format.ChunkMeshAttribute;
+import org.embeddedt.embeddium.client.gl.attribute.GlVertexAttributeBinding;
+import org.embeddedt.embeddium.client.gl.attribute.GlVertexFormat;
+import org.embeddedt.embeddium.client.gl.buffer.VertexData;
+import org.embeddedt.embeddium.client.render.chunk.backends.oneshot.ChunkOneshotGraphicsState;
+import org.embeddedt.embeddium.client.render.chunk.format.ChunkMeshAttribute;
 import net.coderbot.iris.block_rendering.BlockRenderingSettings;
 import net.coderbot.iris.compat.sodium.impl.IrisChunkShaderBindingPoints;
 import net.coderbot.iris.compat.sodium.impl.vertex_format.IrisChunkMeshAttributes;
@@ -22,10 +22,10 @@ public abstract class MixinChunkOneshotGraphicsState {
 
 	@ModifyArg(method = "upload", remap = false,
 			at = @At(value = "INVOKE",
-					target = "me/jellysquid/mods/sodium/client/gl/device/CommandList.uploadData (" +
-								"Lme/jellysquid/mods/sodium/client/gl/buffer/GlMutableBuffer;" +
-								"Lme/jellysquid/mods/sodium/client/gl/buffer/VertexData;" +
-							")V",
+					target = "org/embeddedt/embeddium/client/gl/device/CommandList.uploadData (" +
+							"Lorg/embeddedt/embeddium/client/gl/buffer/GlMutableBuffer;" +
+							"Lorg/embeddedt/embeddium/client/gl/buffer/VertexData;" +
+						")V",
 					remap = false))
 	@SuppressWarnings("unchecked")
 	private VertexData iris$captureVertexFormat(VertexData vertexData) {
@@ -36,11 +36,11 @@ public abstract class MixinChunkOneshotGraphicsState {
 
 	@ModifyArg(method = "upload", remap = false,
 			at = @At(value = "INVOKE",
-					target = "me/jellysquid/mods/sodium/client/gl/tessellation/TessellationBinding.<init> (" +
-								"Lme/jellysquid/mods/sodium/client/gl/buffer/GlBuffer;" +
-								"[Lme/jellysquid/mods/sodium/client/gl/attribute/GlVertexAttributeBinding;" +
-								"Z" +
-							")V",
+					target = "org/embeddedt/embeddium/client/gl/tessellation/TessellationBinding.<init> (" +
+							"Lorg/embeddedt/embeddium/client/gl/buffer/GlBuffer;" +
+							"[Lorg/embeddedt/embeddium/client/gl/attribute/GlVertexAttributeBinding;" +
+							"Z" +
+						")V",
 					remap = false,
 					ordinal = 0))
 	private GlVertexAttributeBinding[] iris$addAdditionalBindings(GlVertexAttributeBinding[] base) {
