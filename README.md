@@ -1,39 +1,55 @@
 <p align="center">
-  <img src="banner.png">
+  <img src="banner.png" alt="Oculus 1.12.2 Backport banner">
 </p>
 
-# Oculus
-[![](http://cf.way2muchnoise.eu/short_oculus_downloads.svg)](https://www.curseforge.com/minecraft/mc-mods/oculus)
-[![](http://cf.way2muchnoise.eu/versions/Available%20for_oculus_full.svg)](https://www.curseforge.com/minecraft/mc-mods/oculus/files)
+# Oculus 1.12.2 Backport
 
-Oculus is an Unofficial Fork of ["Iris"](https://www.curseforge.com/minecraft/mc-mods/irisshaders), made to work with Forge Mod Loader.
+> A Forge 1.12.2-focused continuation of Oculus by **dabrelity1**. This branch rewires the modern Iris/Oculus shader pipeline so classic modpacks can finally use full-featured shaders without downgrading to OptiFine.
 
-## Disclaimer
-Oculus is not and never will be compatible with Optifine!
+## What this project is
+- **Target Minecraft**: 1.12.2 (Forge 14.23.5).<br>
+- **Goal**: Parity with the Iris/Oculus 1.16.5 renderer—gbuffers, shadow passes, compute stages, GUI, and pack compatibility—on legacy packs.
+- **Status**: Active development. Large pieces are still being ported (see open issues for the breakdown of remaining blockers).
 
-## Dependencies
-Oculus requires [Rubidium](https://www.curseforge.com/minecraft/mc-mods/rubidium) made by Asek3!
+## Current focus areas
+1. Captured rendering state, camera trackers, and ID maps.
+2. Full uniform suite (camera, weather, player, compatibility shims).
+3. Framebuffer + shadow map rendering and sampler bindings.
+4. Render phase mixins for world, hand, weather, and composite passes.
+5. Shader pack UI/option persistence and compute/image wiring.
 
-## Features
-* Performance. Oculus should fully utilize your graphics card when paired with optimization mods like Rubidium.
+If you want to help, pick an unchecked issue from the tracker or open a discussion before starting a larger subsystem.
 
-* Mod compatibility. Oculus should make a best effort to be compatible with modded environments.
+## Requirements & compatibility
+- Forge 1.12.2-14.23.5.2768 (matching the Gradle config).
+- [Relictium 1.2.0](https://modrinth.com/mod/relictium) (required dependency).
+- Java 8 (HotSpot). Later JVMs are not tested.
+- OptiFine is **not** supported and never will be.
 
-* Backwards compatibility. All existing ShadersMod / OptiFine shader packs should just work on Oculus, without any modifications required.
+## Building from source
+> The project uses the legacy ForgeGradle 2.3 toolchain.
 
-* A well-organized codebase. I'd like for working with Oculus code to be a pleasant experience overall.
+```powershell
+cd .\oculus-1.12.2\
+.\gradlew.bat clean build
+```
 
-## Discord
-[![](https://dcbadge.vercel.app/api/server/UCsyn5RS4s)](https://discord.gg/UCsyn5RS4s)
+- `gradlew.bat runClient` launches a dev instance with shaders enabled (once the remaining mixins land).
+- Built jars reside in `oculus-1.12.2/build/libs`.
 
-## Contributors
-<a href="https://github.com/Asek3/Oculus/graphs/contributors">
-  <img src="https://contrib.rocks/image?repo=Asek3/Oculus" />
-</a>
+## Getting help
+- Bugs & feature gaps: [GitHub Issues](https://github.com/dabrelity1/Oculus/issues)
+- Development chat: open a discussion in the repo or ping `@dabrelity1` via GitHub.
 
-## License
+## Roadmap snapshot
+- [ ] Finish render-state backbones and uniform parity.
+- [ ] Hook real gbuffers, shadow maps, and compute/image bindings.
+- [ ] Restore shader pack GUI parity (profiles, overrides, folder tools).
+- [ ] Add automated shader-pack validation + CI smoke tests.
+- [ ] Publish pre-release builds for community packs.
 
-[LGPL-3.0 license](https://github.com/Asek3/Oculus/blob/1.16.5/LICENSE)
+## License & acknowledgements
+- This fork remains under the [LGPL-3.0](./LICENSE).
+- Huge credit to Asek3, coderbot, and the Iris team for the original engine and ongoing upstream work.
 
-## Consider supporting 
-[![Support me on Patreon](https://img.shields.io/endpoint.svg?url=https%3A%2F%2Fshieldsio-patreon.vercel.app%2Fapi%3Fusername%3Dasek3%26type%3Dpatrons&style=for-the-badge)](https://patreon.com/asek3)
+If this backport helps your modpack or showcase, consider sharing feedback or fixes—every issue closed gets us closer to fully-featured shaders on 1.12.2.
