@@ -1,0 +1,129 @@
+plugins {
+	id 'dev.architectury.loom' version '0.10.0-SNAPSHOT'
+	id 'com.github.johnrengelman.shadow' version '7.1.2'
+	id 'maven-publish'
+}
+
+loom {
+	silentMojangMappingsLicense()
+
+	forge {
+		mixinConfigs = [
+				"mixins.oculus.json",
+				"mixins.oculus.fantastic.json",
+				"mixins.oculus.vertexformat.json",
+				"mixins.oculus.bettermipmaps.json",
+				"mixins.oculus.fixes.maxfpscrash.json",
+				"mixins.oculus.optimized-stitching.json",
+				"oculus-batched-entity-rendering.mixins.json",
+				"mixins.oculus.compat.sodium.json",
+				"mixins.oculus.compat.json"
+		]
+	}
+	mixin.defaultRefmapName = "oculus-mixins-refmap.json"
+}
+
+sourceCompatibility = JavaVersion.VERSION_1_8
+targetCompatibility = JavaVersion.VERSION_1_8
+
+archivesBaseName = "${project.archives_base_name}-mc${project.minecraft_version}"
+version = project.mod_version
+group = project.maven_group
+
+repositories {
+	mavenLocal()
+	maven {
+		name = "CurseForge"
+		url = "https://cursemaven.com"
+		content {
+			includeGroup "curse.maven"
+		}
+	}
+	maven {
+		name = "Modrinth"
+		url = "https://api.modrinth.com/maven"
+		content {
+			includeGroup "maven.modrinth"
+		}
+	}
+}
+
+dependencies {
+	minecraft "com.mojang:minecraft:${project.minecraft_version}"
+	mappings loom.officialMojangMappings()
+	forge "net.minecraftforge:forge:${minecraft_version}-${forge_version}"
+
+	modCompileOnly "maven.modrinth:rubidium:0.2.13"
+	//modCompileOnly "me.jellysquid.mods:Rubidium:0.2.13"
+	modCompileOnly "curse.maven:epic-fight-mod-405076:4029362"
+
+	modRuntimeOnly "curse.maven:lazydfu-460819:3249059"
+
+	implementation(shadow(project(path: ":glsl-relocated", configuration: "bundledJar"))) {
+		transitive = false
+	}
+	implementation(shadow("org.anarres:jcpp:1.4.14")) {
+		transitive = false
+	}
+	shadow("org.slf4j:slf4j-api:1.7.12") // for jcpp
+}
+
+processResources {
+	inputs.property "version", project.version
+
+	filesMatching("META-INF/mods.toml") {
+		expand "version": project.version
+	}
+}
+
+tasks.withType(JavaCompile).configureEach {
+	it.options.encoding = "UTF-8"
+
+	def targetVersion = 8
+	if (JavaVersion.current().isJava9Compatible()) {
+		it.options.release = targetVersion
+	}
+}
+
+java {
+	withSourcesJar()
+}
+
+shadowJar {
+	configurations = [project.configurations.shadow]
+
+	from jar.archiveFile
+
+	relocate 'org.apache.commons.collections4', 'oculus.org.apache.commons.collections4'
+	relocate 'org.anarres.cpp', 'oculus.org.anarres.cpp'
+	relocate 'org.slf4j', 'oculus.org.slf4j'
+
+	archiveClassifier.set "shadow"
+
+	manifest {
+		attributes(
+				'Main-Class': 'net.coderbot.iris.LaunchWarn'
+		)
+	}
+}
+
+remapJar {
+	input.set shadowJar.archiveFile
+	dependsOn shadowJar
+}
+
+publishing {
+	publications {
+		mavenJava(MavenPublication) {
+			artifact(remapJar) {
+				builtBy remapJar
+			}
+			artifact(sourcesJar) {
+				builtBy remapSourcesJar
+			}
+		}
+	}
+
+	repositories {
+	}
+}

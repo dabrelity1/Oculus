@@ -8,13 +8,20 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import net.oculus.gl.program.Program;
 import net.oculus.gl.program.ProgramBuilder;
+import net.oculus.gl.program.SamplerOverrideMap;
+import net.oculus.gl.program.SamplerOverrideProvider;
+import net.oculus.gl.shader.ShaderType;
 import net.oculus.pipeline.context.ObjectContext;
+import net.oculus.pipeline.texture.CustomTextureManager;
 import net.oculus.shaderpack.ProgramLoadException;
 import net.oculus.shaderpack.ProgramSet;
 import net.oculus.shaderpack.ProgramSource;
+import net.oculus.shaderpack.StringPair;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -28,11 +35,29 @@ public final class ShaderLoader {
 
     private final ProgramSet programSet;
     private final Map<String, Program> programs;
+    private final SamplerOverrideProvider samplerOverrideProvider;
+    private final CustomTextureManager customTextureManager;
+    private final List<StringPair> environmentDefines;
     private boolean initialized;
 
+    private static final Pattern VERSION_DIRECTIVE = Pattern.compile("^\\s*#version\\s+(\\d+)", Pattern.MULTILINE);
+
     public ShaderLoader(ProgramSet programSet) {
+        this(programSet, SamplerOverrideProvider.NONE, null);
+    }
+
+    public ShaderLoader(ProgramSet programSet, SamplerOverrideProvider samplerOverrideProvider) {
+        this(programSet, samplerOverrideProvider, null);
+    }
+
+    public ShaderLoader(ProgramSet programSet,
+                        SamplerOverrideProvider samplerOverrideProvider,
+                        CustomTextureManager customTextureManager) {
         this.programSet = programSet;
         this.programs = new HashMap<>();
+        this.samplerOverrideProvider = samplerOverrideProvider == null ? SamplerOverrideProvider.NONE : samplerOverrideProvider;
+    this.customTextureManager = customTextureManager;
+    this.environmentDefines = ShaderPreprocessor.createEnvironmentDefines(programSet);
     }
 
     public void initialize(ObjectContext context) {
@@ -86,17 +111,98 @@ public final class ShaderLoader {
     }
 
     private Program compileProgram(ProgramSource source) {
-        String vertexSource = source.getVertexSource().orElse(null);
-        String geometrySource = source.getGeometrySource().orElse(null);
-        String fragmentSource = source.getFragmentSource().orElse(null);
+        String vertexSource = applyStandardDefines(source.getVertexSource().orElse(null), ShaderType.VERTEX, source.getName());
+        String geometrySource = applyStandardDefines(source.getGeometrySource().orElse(null), ShaderType.GEOMETRY, source.getName());
+        String fragmentSource = applyStandardDefines(source.getFragmentSource().orElse(null), ShaderType.FRAGMENT, source.getName());
 
-        ProgramBuilder builder = ProgramBuilder.begin(source.getName(), vertexSource, geometrySource, fragmentSource);
+        SamplerOverrideMap overrides = samplerOverrideProvider.overridesFor(source.getName());
+        ProgramBuilder builder = ProgramBuilder.begin(source.getName(), vertexSource, geometrySource, fragmentSource, overrides);
+        if (customTextureManager != null) {
+            customTextureManager.applyCustomSamplers(source.getName(), builder.samplers());
+        }
         return builder.build();
     }
 
     private void logProgramFailure(String name, Exception ex) {
         LOGGER.error("Failed to compile program {}: {}", name, ex.getMessage());
         LOGGER.debug("Stacktrace for program {}", name, ex);
+    }
+
+    private String applyStandardDefines(String source, ShaderType shaderType, String programName) {
+        if (source == null) {
+            return null;
+        }
+
+        String withDefines = ShaderPreprocessor.applyDefines(source, shaderType, programName, environmentDefines);
+        String patched = ShaderCompatibilityPatcher.patch(
+            programSet.getPack().getName(),
+            programName,
+            shaderType,
+            withDefines
+        );
+
+        return ensureShaderCompatibility(patched, shaderType);
+    }
+
+    private String ensureShaderCompatibility(String source, ShaderType shaderType) {
+        if (source == null || shaderType == null) {
+            return source;
+        }
+
+        switch (shaderType) {
+            case VERTEX:
+            case GEOMETRY:
+                return ensureGpuShader4Support(source);
+            default:
+                return source;
+        }
+    }
+
+    private String ensureGpuShader4Support(String source) {
+        String upgraded = bumpVersionDirective(source, 130);
+        return ensureExtensionEnabled(upgraded, "GL_EXT_gpu_shader4");
+    }
+
+    private String bumpVersionDirective(String source, int minimumVersion) {
+        Matcher matcher = VERSION_DIRECTIVE.matcher(source);
+        if (matcher.find()) {
+            int current;
+            try {
+                current = Integer.parseInt(matcher.group(1));
+            } catch (NumberFormatException ignored) {
+                current = minimumVersion;
+            }
+
+            if (current >= minimumVersion) {
+                return source;
+            }
+
+            return matcher.replaceFirst("#version " + minimumVersion);
+        }
+
+        return "#version " + minimumVersion + '\n' + source;
+    }
+
+    private String ensureExtensionEnabled(String source, String extension) {
+        if (source.contains("#extension " + extension)) {
+            return source;
+        }
+
+        int versionIndex = source.indexOf("#version");
+        if (versionIndex < 0) {
+            return "#extension " + extension + " : enable\n" + source;
+        }
+
+        int lineEnd = source.indexOf('\n', versionIndex);
+        if (lineEnd < 0) {
+            return source + '\n' + "#extension " + extension + " : enable\n";
+        }
+
+        StringBuilder builder = new StringBuilder(source.length() + extension.length() + 32);
+        builder.append(source, 0, lineEnd + 1)
+            .append("#extension ").append(extension).append(" : enable\n")
+            .append(source.substring(lineEnd + 1));
+        return builder.toString();
     }
 
     private List<ProgramSource> collectProgramSources() {

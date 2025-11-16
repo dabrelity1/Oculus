@@ -1,6 +1,7 @@
 package net.oculus.gl.state;
 
 import java.nio.FloatBuffer;
+import java.util.function.IntSupplier;
 import java.util.function.Supplier;
 
 import net.minecraft.client.Minecraft;
@@ -14,7 +15,10 @@ import org.lwjgl.opengl.GL11;
  */
 public final class GameDataSuppliers {
     private static final FloatBuffer CAMERA_POSITION = BufferUtils.createFloatBuffer(3);
-    private static final FloatBuffer FOG_COLOR = BufferUtils.createFloatBuffer(4);
+    // LWJGL expects a minimum of 16 floats for glGetFloat queries regardless of the
+    // actual component count (GL_FOG_COLOR only uses 4), so allocate a larger buffer
+    // and clamp the exposed range after the driver populates it.
+    private static final FloatBuffer FOG_COLOR = BufferUtils.createFloatBuffer(16);
     private static final FloatBuffer SINGLE_FLOAT = BufferUtils.createFloatBuffer(1);
 
     private static volatile float partialTicksOverride = Float.NaN;
@@ -24,6 +28,8 @@ public final class GameDataSuppliers {
     private static final Supplier<FloatBuffer> FOG_COLOR_SUPPLIER = GameDataSuppliers::updateFogColor;
     private static final Supplier<Float> FOG_START_SUPPLIER = () -> readFogValue(GL11.GL_FOG_START);
     private static final Supplier<Float> FOG_END_SUPPLIER = () -> readFogValue(GL11.GL_FOG_END);
+    private static final Supplier<Float> FOG_DENSITY_SUPPLIER = () -> readFogValue(GL11.GL_FOG_DENSITY);
+    private static final IntSupplier FOG_MODE_SUPPLIER = GameDataSuppliers::readFogMode;
     private static final Supplier<Float> VIEW_WIDTH_SUPPLIER = () -> {
         Minecraft mc = Minecraft.getMinecraft();
         return mc != null ? (float) mc.displayWidth : 0.0F;
@@ -31,6 +37,13 @@ public final class GameDataSuppliers {
     private static final Supplier<Float> VIEW_HEIGHT_SUPPLIER = () -> {
         Minecraft mc = Minecraft.getMinecraft();
         return mc != null ? (float) mc.displayHeight : 0.0F;
+    };
+    private static final Supplier<Float> ASPECT_RATIO_SUPPLIER = () -> {
+        Minecraft mc = Minecraft.getMinecraft();
+        if (mc == null || mc.displayHeight == 0) {
+            return 1.0F;
+        }
+        return (float) mc.displayWidth / (float) mc.displayHeight;
     };
 
     private GameDataSuppliers() {
@@ -60,12 +73,24 @@ public final class GameDataSuppliers {
         return FOG_END_SUPPLIER;
     }
 
+    public static Supplier<Float> fogDensity() {
+        return FOG_DENSITY_SUPPLIER;
+    }
+
+    public static IntSupplier fogMode() {
+        return FOG_MODE_SUPPLIER;
+    }
+
     public static Supplier<Float> viewWidth() {
         return VIEW_WIDTH_SUPPLIER;
     }
 
     public static Supplier<Float> viewHeight() {
         return VIEW_HEIGHT_SUPPLIER;
+    }
+
+    public static Supplier<Float> aspectRatio() {
+        return ASPECT_RATIO_SUPPLIER;
     }
 
     private static FloatBuffer updateCameraPosition() {
@@ -101,6 +126,10 @@ public final class GameDataSuppliers {
         GL11.glGetFloat(pname, SINGLE_FLOAT);
         SINGLE_FLOAT.position(0);
         return SINGLE_FLOAT.get(0);
+    }
+
+    private static int readFogMode() {
+        return GL11.glGetInteger(GL11.GL_FOG_MODE);
     }
 
     private static float resolvePartialTicks(Minecraft mc) {

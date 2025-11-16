@@ -12,6 +12,16 @@ public interface WorldRenderingPipeline {
     default void endWorldRendering() {
     }
 
+    default void setPhase(WorldRenderingPhase phase) {
+    }
+
+    default void setOverridePhase(WorldRenderingPhase phase) {
+    }
+
+    default WorldRenderingPhase getPhase() {
+        return WorldRenderingPhase.NONE;
+    }
+
     default void destroy() {
     }
 }

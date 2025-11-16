@@ -8,6 +8,7 @@ import net.minecraft.block.state.IBlockState;
 
 public class BlockContextHolder {
     private static final Object2IntMap<IBlockState> VANILLA_BLOCK_STATE_IDS = buildVanillaStateIdMap();
+    private static volatile Object2IntMap<IBlockState> activeBlockStateIds = VANILLA_BLOCK_STATE_IDS;
 
     private final Object2IntMap<IBlockState> blockStateIds;
 
@@ -30,6 +31,18 @@ public class BlockContextHolder {
 
     public static BlockContextHolder createVanillaHolder() {
         return new BlockContextHolder(VANILLA_BLOCK_STATE_IDS);
+    }
+
+    public static BlockContextHolder createActiveHolder() {
+        return new BlockContextHolder(activeBlockStateIds);
+    }
+
+    public static void useActiveStateMap(Object2IntMap<IBlockState> idMap) {
+        activeBlockStateIds = idMap == null ? VANILLA_BLOCK_STATE_IDS : idMap;
+    }
+
+    public static Object2IntMap<IBlockState> getVanillaStateIds() {
+        return VANILLA_BLOCK_STATE_IDS;
     }
 
     public void setLocalPos(int x, int y, int z) {

@@ -63,6 +63,13 @@ dependencies {
     compile "org.spongepowered:mixin:0.8.5"
     compile "zone.rong:mixinbooter:8.0"
     annotationProcessor "org.spongepowered:mixin:0.8.5:processor"
+    compile("org.anarres:jcpp:1.4.14") {
+        transitive = false
+    }
+    compile("org.slf4j:slf4j-api:1.7.12") {
+        transitive = false
+    }
+    testCompile "junit:junit:4.13.2"
 }
 
 def mixinConfigName = "oculus.mixins.json"

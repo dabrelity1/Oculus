@@ -13,6 +13,7 @@ import org.lwjgl.opengl.GL13;
 import net.oculus.shaderpack.ProgramSet;
 import net.oculus.shaderpack.ShaderPack;
 import net.oculus.shaderpack.ShaderProperties;
+import net.oculus.shaderpack.option.values.MutableOptionValues;
 import net.oculus.uniforms.SystemTimeUniforms;
 
 /**
@@ -28,6 +29,8 @@ public final class PipelineManager {
     private final Map<NamespacedId, WorldRenderingPipeline> pipelinesPerDimension = new HashMap<>();
 
     private WorldRenderingPipeline pipeline = new FixedFunctionWorldRenderingPipeline();
+    private ShaderPack activePack = ShaderPack.placeholder();
+    private boolean shadersEnabled;
     private int versionCounterForSodiumShaderReload;
 
     private PipelineManager() {
@@ -35,32 +38,30 @@ public final class PipelineManager {
 
     public WorldRenderingPipeline preparePipeline(NamespacedId dimension) {
         WorldRenderingPipeline current = pipelinesPerDimension.get(dimension);
-        boolean shadersEnabled = BlockRenderingSettings.INSTANCE.isReloadRequired();
 
-        if (current == null) {
+        boolean needsPipeline = current == null
+            || (shouldUseShaders() && !(current instanceof ShaderWorldRenderingPipeline))
+            || (!shouldUseShaders() && !(current instanceof FixedFunctionWorldRenderingPipeline));
+
+        if (needsPipeline) {
             SystemTimeUniforms.COUNTER.reset();
             SystemTimeUniforms.TIMER.reset();
-            current = createPipeline(shadersEnabled);
-            pipelinesPerDimension.put(dimension, current);
-            logPipelineCreation(dimension, current);
-        } else if (shadersEnabled && !(current instanceof ShaderWorldRenderingPipeline)) {
-            current.destroy();
-            current = createPipeline(true);
-            pipelinesPerDimension.put(dimension, current);
-            logPipelineCreation(dimension, current);
-        } else if (!shadersEnabled && !(current instanceof FixedFunctionWorldRenderingPipeline)) {
-            current.destroy();
-            current = createPipeline(false);
+
+            if (current != null) {
+                current.destroy();
+            }
+
+            current = createPipeline(shouldUseShaders());
             pipelinesPerDimension.put(dimension, current);
             logPipelineCreation(dimension, current);
         }
 
-        if (shadersEnabled) {
-            BlockRenderingSettings.INSTANCE.clearReloadRequired();
+        if (BlockRenderingSettings.INSTANCE.isReloadRequired()) {
             Minecraft minecraft = Minecraft.getMinecraft();
             if (minecraft != null && minecraft.renderGlobal != null) {
                 minecraft.renderGlobal.loadRenderers();
             }
+            BlockRenderingSettings.INSTANCE.clearReloadRequired();
         }
 
         pipeline = current;
@@ -68,10 +69,10 @@ public final class PipelineManager {
     }
 
     private WorldRenderingPipeline createPipeline(boolean shadersEnabled) {
-        if (shadersEnabled) {
-            ShaderPack pack = ShaderPack.placeholder();
-            ShaderProperties properties = ShaderProperties.empty();
-            ProgramSet programs = new ProgramSet(pack, properties);
+        if (shadersEnabled && hasUsableShaderPack()) {
+            ShaderPack pack = activePack;
+            ShaderProperties properties = pack.getProperties();
+            ProgramSet programs = new ProgramSet(pack.getProgramRoot(), pack.getSourceProvider(), properties, pack);
             return new ShaderWorldRenderingPipeline(pack, programs, properties);
         }
 
@@ -84,6 +85,10 @@ public final class PipelineManager {
 
     public WorldRenderingPipeline getPipeline() {
         return preparePipeline(NamespacedId.overworld());
+    }
+
+    public WorldRenderingPipeline getPipelineNullable() {
+        return pipeline;
     }
 
     public Optional<WorldRenderingPipeline> getPipelineOptional() {
@@ -100,6 +105,34 @@ public final class PipelineManager {
 
     public int getVersionCounterForSodiumShaderReload() {
         return versionCounterForSodiumShaderReload;
+    }
+
+    public ShaderPack getActivePack() {
+        return activePack != null ? activePack : ShaderPack.placeholder();
+    }
+
+    public void reloadShaderPack(ShaderPack pack, MutableOptionValues values) {
+        ShaderPack nextPack = pack != null ? pack : ShaderPack.placeholder();
+        if (values != null && nextPack.getOptionValues() != values) {
+            MutableOptionValues packValues = nextPack.getOptionValues();
+            values.asMap().forEach((key, value) -> {
+                if ("true".equalsIgnoreCase(value) || "false".equalsIgnoreCase(value)) {
+                    packValues.setBooleanValue(key, Boolean.parseBoolean(value));
+                } else {
+                    packValues.setStringValue(key, value);
+                }
+            });
+        }
+
+        this.activePack = nextPack;
+        this.shadersEnabled = hasUsableShaderPack();
+        if (nextPack != null) {
+            BlockContextHolder.useActiveStateMap(nextPack.getBlockStateIdMap().isEmpty() ? null : nextPack.getBlockStateIdMap());
+        } else {
+            BlockContextHolder.useActiveStateMap(null);
+        }
+        BlockRenderingSettings.INSTANCE.markReloadRequired();
+        destroyPipeline();
     }
 
     public void destroyPipeline() {
@@ -121,5 +154,13 @@ public final class PipelineManager {
         }
 
         GL13.glActiveTexture(GL13.GL_TEXTURE0);
+    }
+
+    private boolean hasUsableShaderPack() {
+        return activePack != null && !activePack.isInternal();
+    }
+
+    private boolean shouldUseShaders() {
+        return shadersEnabled && hasUsableShaderPack();
     }
 }

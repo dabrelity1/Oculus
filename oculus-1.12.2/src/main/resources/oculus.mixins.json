@@ -11,8 +11,13 @@
     "ChunkRenderRebuildTaskMixin",
     "client.gui.MixinSodiumOptionsGUI",
     "pipeline.ChunkOneshotGraphicsStateMixin",
-  "pipeline.MultidrawChunkRenderBackendMixin",
-  "pipeline.LevelRendererMixin",
+    "pipeline.MultidrawChunkRenderBackendMixin",
+    "pipeline.LevelRendererMixin",
+    "pipeline.WorldRendererMixin",
+    "pipeline.EntityRendererFogMixin",
+    "pipeline.RenderManagerMixin",
+    "pipeline.TileEntityRendererDispatcherMixin",
+    "pipeline.ParticleManagerMixin",
     "vertexformat.GlVertexFormatBuilderMixin"
   ],
   "injectors": {

@@ -12,7 +12,7 @@ import net.minecraft.block.state.IBlockState;
 import net.minecraft.client.renderer.block.model.IBakedModel;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.world.IBlockAccess;
-import net.oculus.mixin.extensions.IChunkBuildBuffers;
+import net.oculus.sodium.extensions.IChunkBuildBuffers;
 import net.oculus.pipeline.BlockContextHolder;
 import net.oculus.pipeline.vertex.OculusExtendedDataHelper;
 import org.spongepowered.asm.mixin.Mixin;

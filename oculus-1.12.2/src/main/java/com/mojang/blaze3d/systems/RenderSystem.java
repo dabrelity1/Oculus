@@ -13,7 +13,7 @@ import org.lwjgl.opengl.GL14;
  * existing rendering logic keeps working.
  */
 public final class RenderSystem {
-    private static final int MAX_TEXTURE_UNITS = 16;
+    private static final int MAX_TEXTURE_UNITS = 8;
 
     private RenderSystem() {
     }

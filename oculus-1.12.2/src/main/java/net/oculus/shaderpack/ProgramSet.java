@@ -224,41 +224,67 @@ public class ProgramSet implements ProgramSetInterface {
     }
 
     private void locateDirectives() {
-        // Directive parsing is deferred until the metadata pipeline is ported.
-        // The scaffolding remains so future work only needs to fill in this method.
         List<ProgramSource> programs = new ArrayList<>();
+        List<ComputeSource> computes = new ArrayList<>();
+
         programs.add(shadow);
         programs.addAll(Arrays.asList(shadowcomp));
         programs.addAll(Arrays.asList(prepare));
-        programs.addAll(Arrays.asList(deferred));
-        programs.addAll(Arrays.asList(composite));
-        programs.add(compositeFinal);
         programs.addAll(Arrays.asList(
             gbuffersBasic, gbuffersBeaconBeam, gbuffersTextured, gbuffersTexturedLit, gbuffersTerrain,
             gbuffersDamagedBlock, gbuffersSkyBasic, gbuffersSkyTextured, gbuffersClouds, gbuffersWeather,
             gbuffersEntities, gbuffersEntitiesTrans, gbuffersEntitiesGlowing, gbuffersGlint,
-            gbuffersEntityEyes, gbuffersBlock, gbuffersHand, gbuffersWater, gbuffersHandWater
+            gbuffersEntityEyes, gbuffersBlock, gbuffersHand
         ));
 
-        List<ComputeSource> computes = new ArrayList<>();
+        ComputeSourceCollector.collect(computes, compositeCompute);
+        ComputeSourceCollector.collect(computes, deferredCompute);
+        ComputeSourceCollector.collect(computes, prepareCompute);
+        ComputeSourceCollector.collect(computes, shadowCompCompute);
         ComputeSourceCollector.collect(computes, shadowCompute);
         ComputeSourceCollector.collect(computes, finalCompute);
-        ComputeSourceCollector.collect(computes, shadowCompCompute);
-        ComputeSourceCollector.collect(computes, prepareCompute);
-        ComputeSourceCollector.collect(computes, deferredCompute);
-        ComputeSourceCollector.collect(computes, compositeCompute);
-
-        for (ProgramSource source : programs) {
-            if (source != null && source.isValid()) {
-                // Future directive parsing will attach metadata here.
-            }
-        }
 
         for (ComputeSource compute : computes) {
-            if (compute != null && compute.isValid()) {
-                // Future work: parse const directives attached to compute shaders.
+            if (compute == null) {
+                continue;
             }
+
+            compute.getSource().map(ConstDirectiveParser::findDirectives).ifPresent(directives -> {
+                for (ConstDirectiveParser.ConstDirective directive : directives) {
+                    ConstDirectiveParser.ConstDirective.Type type = directive.getType();
+                    if (type == ConstDirectiveParser.ConstDirective.Type.IVEC3 && "workGroups".equals(directive.getKey())) {
+                        ComputeDirectiveParser.setComputeWorkGroups(compute, directive);
+                    } else if (type == ConstDirectiveParser.ConstDirective.Type.VEC2 && "workGroupsRender".equals(directive.getKey())) {
+                        ComputeDirectiveParser.setComputeWorkGroupsRelative(compute, directive);
+                    }
+                }
+            });
         }
+
+        programs.addAll(Arrays.asList(deferred));
+        programs.add(gbuffersWater);
+        programs.add(gbuffersHandWater);
+        programs.addAll(Arrays.asList(composite));
+        programs.add(compositeFinal);
+
+        DispatchingDirectiveHolder packDirectiveHolder = new DispatchingDirectiveHolder();
+        packDirectives.acceptDirectivesFrom(packDirectiveHolder);
+
+        for (ProgramSource source : programs) {
+            if (source == null) {
+                continue;
+            }
+
+            source.getFragmentSource().map(ConstDirectiveParser::findDirectives).ifPresent(directives -> {
+                for (ConstDirectiveParser.ConstDirective directive : directives) {
+                    packDirectiveHolder.processDirective(directive);
+                }
+            });
+        }
+
+        packDirectives.getRenderTargetDirectives().getRenderTargetSettings().forEach((index, settings) ->
+            Oculus.LOGGER.debug("Render target settings for colortex{}: {}", index, settings)
+        );
     }
 
     public PackDirectives getPackDirectives() {

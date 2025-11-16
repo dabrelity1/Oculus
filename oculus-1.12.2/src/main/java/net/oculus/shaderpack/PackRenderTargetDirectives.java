@@ -6,18 +6,16 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
+import net.oculus.Oculus;
+import net.oculus.gl.texture.InternalTextureFormat;
 import net.oculus.shaderpack.directives.DirectiveHolder;
+import net.oculus.vendored.joml.Vector4f;
 
-/**
- * Minimal stub mirroring the render-target directive container from the modern
- * Iris codebase. A handful of helper constants and data structures are wired
- * in so the translated {@link ProgramSet} can depend on them, but no real
- * directive parsing is performed yet.
- */
 public final class PackRenderTargetDirectives {
 	public static final List<String> LEGACY_RENDER_TARGETS = Collections.unmodifiableList(Arrays.asList(
 		"gcolor",
@@ -46,7 +44,45 @@ public final class PackRenderTargetDirectives {
 	}
 
 	public void acceptDirectives(DirectiveHolder directives) {
-		// Directive parsing will be ported alongside the metadata system.
+		Optional.ofNullable(renderTargetSettings.get(7)).ifPresent(colortex7 ->
+			directives.acceptCommentStringDirective("GAUX4FORMAT", format -> {
+				Optional<InternalTextureFormat> internalFormat = InternalTextureFormat.fromString(format);
+				if (internalFormat.isPresent()) {
+					colortex7.requestedFormat = internalFormat.get();
+				} else {
+					Oculus.LOGGER.warn("Unknown GAUX4FORMAT value '{}'", format);
+				}
+			})
+		);
+
+		Optional.ofNullable(renderTargetSettings.get(1)).ifPresent(gdepth ->
+			directives.acceptUniformDirective("gdepth", () -> {
+				if (gdepth.requestedFormat == InternalTextureFormat.RGBA) {
+					gdepth.requestedFormat = InternalTextureFormat.RGBA32F;
+				}
+			})
+		);
+
+		renderTargetSettings.forEach((index, settings) -> {
+			acceptBufferDirectives(directives, settings, "colortex" + index);
+			if (index < LEGACY_RENDER_TARGETS.size()) {
+				acceptBufferDirectives(directives, settings, LEGACY_RENDER_TARGETS.get(index));
+			}
+		});
+	}
+
+	private void acceptBufferDirectives(DirectiveHolder directives, RenderTargetSettings settings, String bufferName) {
+		directives.acceptConstStringDirective(bufferName + "Format", format -> {
+			Optional<InternalTextureFormat> internalFormat = InternalTextureFormat.fromString(format);
+			if (internalFormat.isPresent()) {
+				settings.requestedFormat = internalFormat.get();
+			} else {
+				Oculus.LOGGER.warn("Unrecognized internal texture format '{}' for {}", format, bufferName);
+			}
+		});
+
+		directives.acceptConstBooleanDirective(bufferName + "Clear", value -> settings.clear = value);
+		directives.acceptConstVec4Directive(bufferName + "ClearColor", value -> settings.clearColor = value);
 	}
 
 	public Map<Integer, RenderTargetSettings> getRenderTargetSettings() {
@@ -54,16 +90,39 @@ public final class PackRenderTargetDirectives {
 	}
 
 	public List<Integer> getBuffersToBeCleared() {
-		return new ArrayList<>();
+		List<Integer> buffersToBeCleared = new ArrayList<>();
+		renderTargetSettings.forEach((index, settings) -> {
+			if (settings.shouldClear()) {
+				buffersToBeCleared.add(index);
+			}
+		});
+		return buffersToBeCleared;
 	}
 
 	public static final class RenderTargetSettings {
-		public int getInternalFormat() {
-			return 0;
+		private InternalTextureFormat requestedFormat = InternalTextureFormat.RGBA;
+		private boolean clear = true;
+		private Vector4f clearColor = null;
+
+		public InternalTextureFormat getInternalFormat() {
+			return requestedFormat;
 		}
 
 		public boolean shouldClear() {
-			return true;
+			return clear;
+		}
+
+		public Optional<Vector4f> getClearColor() {
+			return Optional.ofNullable(clearColor);
+		}
+
+		@Override
+		public String toString() {
+			return "RenderTargetSettings{" +
+				"requestedFormat=" + requestedFormat +
+				", clear=" + clear +
+				", clearColor=" + clearColor +
+				'}';
 		}
 	}
 }

@@ -5,7 +5,7 @@ import me.jellysquid.mods.sodium.client.gui.SodiumOptionsGUI;
 import me.jellysquid.mods.sodium.client.gui.options.OptionPage;
 import net.minecraft.client.gui.GuiScreen;
 import net.minecraft.client.resources.I18n;
-import net.oculus.client.gui.GuiShaders;
+import net.oculus.gui.ShaderPackScreen;
 import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
@@ -38,7 +38,7 @@ public abstract class MixinSodiumOptionsGUI extends GuiScreen {
     private void onSetPage(OptionPage page, CallbackInfo ci) {
         if (page == this.oculusShaderPackPage) {
             ci.cancel();
-            this.mc.displayGuiScreen(new GuiShaders(this));
+            this.mc.displayGuiScreen(new ShaderPackScreen(this));
         }
     }
 }

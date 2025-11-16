@@ -1,9 +1,9 @@
 package net.oculus.pipeline;
 
-import me.jellysquid.mods.sodium.client.gl.attribute.GlVertexAttribute;
 import me.jellysquid.mods.sodium.client.gl.attribute.GlVertexAttributeBinding;
 import me.jellysquid.mods.sodium.client.gl.attribute.GlVertexFormat;
 import me.jellysquid.mods.sodium.client.render.chunk.format.ChunkMeshAttribute;
+import net.oculus.Oculus;
 import net.oculus.pipeline.vertex.OculusChunkMeshAttributes;
 
 import java.util.ArrayList;
@@ -36,10 +36,14 @@ public final class OculusVertexBindingHelper {
                                                                                   me.jellysquid.mods.sodium.client.gl.shader.ShaderBindingPoint bindingPoint,
                                                                                   ChunkMeshAttribute attributeId) {
                 try {
-                        GlVertexAttribute attribute = format.getAttribute(attributeId);
-                        bindings.add(new GlVertexAttributeBinding(bindingPoint, attribute));
-                } catch (NullPointerException ignored) {
-                        // Format does not provide this attribute; skip silently so non-Oculus formats continue to work.
+                        bindings.add(new GlVertexAttributeBinding(bindingPoint, format.getAttribute(attributeId)));
+                } catch (RuntimeException missingAttribute) {
+                        // Sodium's default terrain format only knows about its original four attributes. If that
+                        // format is still active we skip the additional bindings so terrain rendering continues.
+                        if (Oculus.LOGGER.isDebugEnabled()) {
+                                Oculus.LOGGER.debug("Skipping Oculus vertex attribute {}: {}", attributeId,
+                                                missingAttribute.toString());
+                        }
                 }
         }
 }

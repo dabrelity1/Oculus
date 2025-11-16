@@ -32,6 +32,18 @@ public class Program extends GlResource {
         OculusRenderSystem.glUseProgram(0);
     }
 
+    protected ProgramUniforms getUniforms() {
+        return uniforms;
+    }
+
+    protected ProgramSamplers getSamplers() {
+        return samplers;
+    }
+
+    protected ProgramImages getImages() {
+        return images;
+    }
+
     @Override
     protected void destroyInternal() {
         ProgramUniforms.clearActiveUniforms();

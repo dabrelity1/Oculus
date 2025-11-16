@@ -1,0 +1,14 @@
+{
+  "required": true,
+  "minVersion": "0.8",
+  "package": "net.coderbot.iris.mixin.compat",
+  "plugin": "net.coderbot.iris.mixin.compat.CompatMixinPlugin",
+  "compatibilityLevel": "JAVA_8",
+  "client": [
+    "epicfight.MixinEpicFightRenderTypes",
+    "pixelmon.MixinNormalizedFace"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}

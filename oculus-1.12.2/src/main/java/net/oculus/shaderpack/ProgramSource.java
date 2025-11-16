@@ -34,7 +34,7 @@ public final class ProgramSource {
     public ProgramSource(String name, String vertexSource, String geometrySource, String fragmentSource,
                          ProgramSet parent, ShaderProperties properties, BlendModeOverride defaultBlendModeOverride) {
         this(name, vertexSource, geometrySource, fragmentSource,
-            new ProgramDirectives(parent, name, properties, defaultBlendModeOverride), parent);
+        new ProgramDirectives(parent, name, fragmentSource, properties, defaultBlendModeOverride), parent);
     }
 
     public ProgramSource withDirectiveOverride(ProgramDirectives overrideDirectives) {

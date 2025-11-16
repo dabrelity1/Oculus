@@ -9,6 +9,7 @@ import java.util.function.IntSupplier;
 import java.util.function.Supplier;
 
 import net.oculus.gl.OculusRenderSystem;
+import net.oculus.gl.state.ValueUpdateNotifier;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.lwjgl.BufferUtils;
@@ -33,14 +34,22 @@ public final class ProgramUniforms {
     }
 
     public void update() {
+        if (active != null && active != this) {
+            active.removeListeners();
+        }
+
         active = this;
+        attachListeners();
         for (UniformBinding binding : bindings) {
             binding.upload();
         }
     }
 
     public static void clearActiveUniforms() {
-        active = null;
+        if (active != null) {
+            active.removeListeners();
+            active = null;
+        }
     }
 
     public static Builder builder(String programName, int programId) {
@@ -52,12 +61,15 @@ public final class ProgramUniforms {
         private final String uniformName;
         private final int location;
         private final UniformUpdater updater;
+        private final ValueUpdateNotifier notifier;
 
-        private UniformBinding(String programName, String uniformName, int location, UniformUpdater updater) {
+        private UniformBinding(String programName, String uniformName, int location, UniformUpdater updater,
+                                ValueUpdateNotifier notifier) {
             this.programName = programName;
             this.uniformName = uniformName;
             this.location = location;
             this.updater = updater;
+            this.notifier = notifier;
         }
 
         private void upload() {
@@ -65,6 +77,18 @@ public final class ProgramUniforms {
                 updater.upload(location);
             } catch (RuntimeException ex) {
                 LOGGER.warn("Failed to upload uniform {} for program {}", uniformName, programName, ex);
+            }
+        }
+
+        private void attachListener() {
+            if (notifier != null) {
+                notifier.setListener(() -> upload());
+            }
+        }
+
+        private void detachListener() {
+            if (notifier != null) {
+                notifier.setListener(null);
             }
         }
     }
@@ -91,6 +115,10 @@ public final class ProgramUniforms {
         }
 
         public Builder register(String uniformName, UniformUpdater updater) {
+            return register(uniformName, updater, null);
+        }
+
+        public Builder register(String uniformName, UniformUpdater updater, ValueUpdateNotifier notifier) {
             Objects.requireNonNull(uniformName, "uniformName");
             Objects.requireNonNull(updater, "updater");
 
@@ -99,7 +127,7 @@ public final class ProgramUniforms {
                 return this;
             }
 
-            bindings.add(new UniformBinding(programName, uniformName, location, updater));
+            bindings.add(new UniformBinding(programName, uniformName, location, updater, notifier));
             return this;
         }
 
@@ -121,6 +149,11 @@ public final class ProgramUniforms {
         public Builder addInt(String uniformName, IntSupplier supplier) {
             Objects.requireNonNull(supplier, "supplier");
             return register(uniformName, location -> GL20.glUniform1i(location, supplier.getAsInt()));
+        }
+
+        public Builder addInt(String uniformName, IntSupplier supplier, ValueUpdateNotifier notifier) {
+            Objects.requireNonNull(supplier, "supplier");
+            return register(uniformName, location -> GL20.glUniform1i(location, supplier.getAsInt()), notifier);
         }
 
         public Builder addVec2(String uniformName, Supplier<float[]> supplier) {
@@ -224,6 +257,18 @@ public final class ProgramUniforms {
 
         public ProgramUniforms build() {
             return new ProgramUniforms(programName, Collections.unmodifiableList(new ArrayList<>(bindings)));
+        }
+    }
+
+    private void attachListeners() {
+        for (UniformBinding binding : bindings) {
+            binding.attachListener();
+        }
+    }
+
+    private void removeListeners() {
+        for (UniformBinding binding : bindings) {
+            binding.detachListener();
         }
     }
 }

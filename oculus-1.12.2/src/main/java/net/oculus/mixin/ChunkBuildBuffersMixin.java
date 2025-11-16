@@ -5,7 +5,7 @@ import me.jellysquid.mods.sodium.client.model.vertex.buffer.VertexBufferView;
 import me.jellysquid.mods.sodium.client.model.vertex.type.ChunkVertexType;
 import me.jellysquid.mods.sodium.client.render.chunk.compile.ChunkBuildBuffers;
 import me.jellysquid.mods.sodium.client.render.chunk.data.ChunkRenderData;
-import net.oculus.mixin.extensions.IChunkBuildBuffers;
+import net.oculus.sodium.extensions.IChunkBuildBuffers;
 import net.oculus.pipeline.BlockContextHolder;
 import net.oculus.pipeline.ContextAwareVertexWriter;
 import org.spongepowered.asm.mixin.Mixin;
@@ -28,7 +28,7 @@ public abstract class ChunkBuildBuffersMixin implements IChunkBuildBuffers {
     @Inject(method = "init", at = @At("RETURN"), remap = false)
     private void oculus$initContextHolder(ChunkRenderData.Builder renderData, CallbackInfo ci) {
         if (this.oculus_contextHolder == null) {
-            this.oculus_contextHolder = BlockContextHolder.createVanillaHolder();
+            this.oculus_contextHolder = BlockContextHolder.createActiveHolder();
         }
     }
 
@@ -38,7 +38,7 @@ public abstract class ChunkBuildBuffersMixin implements IChunkBuildBuffers {
 
         if (sink instanceof ContextAwareVertexWriter) {
             if (this.oculus_contextHolder == null) {
-                this.oculus_contextHolder = BlockContextHolder.createVanillaHolder();
+                this.oculus_contextHolder = BlockContextHolder.createActiveHolder();
             }
 
             ((ContextAwareVertexWriter) sink).setContextHolder(this.oculus_contextHolder);
