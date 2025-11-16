@@ -52,4 +52,4 @@ cd .\oculus-1.12.2\
 - This fork remains under the [LGPL-3.0](./LICENSE).
 - Huge credit to Asek3, coderbot, and the Iris team for the original engine and ongoing upstream work.
 
-If this backport helps your modpack or showcase, consider sharing feedback or fixes—every issue closed gets us closer to fully-featured shaders on 1.12.2.
+If this backport helps your modpack or showcase, consider sharing feedback or fixes—every issue closed gets me closer to fully-featured shaders on 1.12.2.
