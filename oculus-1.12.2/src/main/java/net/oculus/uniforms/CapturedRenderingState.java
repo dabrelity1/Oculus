@@ -6,11 +6,50 @@ import java.util.Arrays;
 import net.oculus.gl.state.GameDataSuppliers;
 import net.oculus.gl.state.MatrixMath;
 import net.oculus.gl.state.MatrixState;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 /**
- * Captures per-frame rendering data so shader uniforms can mirror the Iris pipeline.
+ * Central state capture system for shader uniforms in the Oculus 1.12.2 shader pipeline.
+ * 
+ * <p>This class serves as the backbone for providing shader programs with accurate rendering
+ * state information. It captures and maintains:</p>
+ * 
+ * <ul>
+ *   <li><b>Matrix State:</b> Current and previous frame model-view and projection matrices,
+ *       their inverses, and the combined model-view-projection matrix</li>
+ *   <li><b>Camera Position:</b> High-precision camera tracking with automatic shifting to
+ *       maintain floating-point precision at large world coordinates</li>
+ *   <li><b>Entity IDs:</b> Current entity and block entity being rendered for shader-based
+ *       entity detection and custom rendering</li>
+ *   <li><b>Fog State:</b> Current fog color in both RGB and RGBA formats</li>
+ *   <li><b>View Frustum:</b> Near and far plane distances</li>
+ * </ul>
+ * 
+ * <p><b>Usage Pattern:</b></p>
+ * <pre>
+ * // Called once per frame by ShaderWorldRenderingPipeline
+ * CapturedRenderingState.INSTANCE.beginFrame(partialTicks);
+ * 
+ * // Matrices and camera data are automatically captured from OpenGL state
+ * // Entity IDs are set by mixins during entity/block entity rendering
+ * 
+ * // Shader uniforms retrieve values via getters
+ * float[] modelView = CapturedRenderingState.INSTANCE.getGbufferModelView();
+ * </pre>
+ * 
+ * <p><b>Thread Safety:</b> This class is not thread-safe and should only be accessed
+ * from the main render thread.</p>
+ * 
+ * <p><b>Debugging:</b> Set system property {@code -Doculus.debug.capturedState=true}
+ * to enable detailed logging of state capture.</p>
+ * 
+ * @see CameraPositionTracker
+ * @see net.oculus.pipeline.ShaderWorldRenderingPipeline#beginWorldRendering(float)
+ * @see net.oculus.gl.program.ProgramBuilder#handleUniform(String, int)
  */
 public final class CapturedRenderingState {
+    private static final Logger LOGGER = LogManager.getLogger(CapturedRenderingState.class);
     public static final CapturedRenderingState INSTANCE = new CapturedRenderingState();
 
     private final float[] gbufferModelView = MatrixMath.createIdentity();
@@ -39,16 +78,40 @@ public final class CapturedRenderingState {
     private int currentBlockEntity = -1;
 
     private final CameraPositionTracker cameraTracker = new CameraPositionTracker();
+    private boolean debugLogging = Boolean.getBoolean("oculus.debug.capturedState");
+    private int frameCount = 0;
 
     private CapturedRenderingState() {
+        if (debugLogging) {
+            LOGGER.info("CapturedRenderingState initialized with debug logging enabled");
+        }
     }
 
+    /**
+     * Initializes state capture for a new frame.
+     * 
+     * <p>This method should be called once per frame before any rendering occurs, typically
+     * from {@link net.oculus.pipeline.ShaderWorldRenderingPipeline#beginWorldRendering(float)}.
+     * It performs the following operations:</p>
+     * 
+     * <ol>
+     *   <li>Stores the current frame's matrices as "previous" for next frame</li>
+     *   <li>Captures fresh model-view and projection matrices from OpenGL state</li>
+     *   <li>Computes matrix inverses and combined model-view-projection</li>
+     *   <li>Updates camera position tracking with precision shifting</li>
+     *   <li>Captures fog color from game state</li>
+     *   <li>Resets entity/block entity IDs to -1 for the new frame</li>
+     * </ol>
+     * 
+     * @param partialTicks The interpolation factor between game ticks (0.0 to 1.0),
+     *                     used for smooth camera movement and animations
+     */
     public void beginFrame(float partialTicks) {
         tickDelta = partialTicks;
-    cameraTracker.update(partialTicks);
+        cameraTracker.update(partialTicks);
         System.arraycopy(cameraTracker.getCurrent(), 0, cameraPosition, 0, cameraPosition.length);
         System.arraycopy(cameraTracker.getPrevious(), 0, previousCameraPosition, 0, previousCameraPosition.length);
-    System.arraycopy(cameraTracker.getLastUnshifted(), 0, unshiftedCameraPosition, 0, unshiftedCameraPosition.length);
+        System.arraycopy(cameraTracker.getLastUnshifted(), 0, unshiftedCameraPosition, 0, unshiftedCameraPosition.length);
         toFloatVector(cameraPosition, cameraPositionVec);
         toFloatVector(previousCameraPosition, previousCameraPositionVec);
         nearPlane = cameraTracker.getNearPlane();
@@ -59,32 +122,83 @@ public final class CapturedRenderingState {
 
         captureMatrices();
         captureFogColor();
+
+        if (debugLogging && (frameCount % 100 == 0)) {
+            LOGGER.debug("Frame {}: Camera at ({}, {}, {}), Previous ({}, {}, {}), Near={}, Far={}",
+                frameCount, 
+                cameraPositionVec[0], cameraPositionVec[1], cameraPositionVec[2],
+                previousCameraPositionVec[0], previousCameraPositionVec[1], previousCameraPositionVec[2],
+                nearPlane, farPlane);
+        }
+        frameCount++;
     }
 
+    /**
+     * Returns the current frame's model-view matrix in column-major format.
+     * Used by the {@code gbufferModelView} shader uniform.
+     * 
+     * @return 16-element float array representing the 4x4 matrix
+     */
     public float[] getGbufferModelView() {
         return gbufferModelView;
     }
 
+    /**
+     * Returns the current frame's projection matrix in column-major format.
+     * Used by the {@code gbufferProjection} shader uniform.
+     * 
+     * @return 16-element float array representing the 4x4 matrix
+     */
     public float[] getGbufferProjection() {
         return gbufferProjection;
     }
 
+    /**
+     * Returns the previous frame's model-view matrix in column-major format.
+     * Used by the {@code gbufferPreviousModelView} shader uniform for motion vectors and TAA.
+     * 
+     * @return 16-element float array representing the 4x4 matrix
+     */
     public float[] getPreviousModelView() {
         return previousModelView;
     }
 
+    /**
+     * Returns the previous frame's projection matrix in column-major format.
+     * Used by the {@code gbufferPreviousProjection} shader uniform for motion vectors and TAA.
+     * 
+     * @return 16-element float array representing the 4x4 matrix
+     */
     public float[] getPreviousProjection() {
         return previousProjection;
     }
 
+    /**
+     * Returns the inverse of the current model-view matrix in column-major format.
+     * Used by the {@code gbufferModelViewInverse} shader uniform.
+     * 
+     * @return 16-element float array representing the 4x4 inverse matrix
+     */
     public float[] getModelViewInverse() {
         return modelViewInverse;
     }
 
+    /**
+     * Returns the inverse of the current projection matrix in column-major format.
+     * Used by the {@code gbufferProjectionInverse} shader uniform.
+     * 
+     * @return 16-element float array representing the 4x4 inverse matrix
+     */
     public float[] getProjectionInverse() {
         return projectionInverse;
     }
 
+    /**
+     * Returns the combined model-view-projection matrix in column-major format.
+     * Computed as projection * modelView. Used by shader uniforms requiring the full transform.
+     * 
+     * @return 16-element float array representing the 4x4 combined matrix
+     */
     public float[] getModelViewProjection() {
         return modelViewProjection;
     }
@@ -135,6 +249,9 @@ public final class CapturedRenderingState {
 
     public void setCurrentEntity(int entityId) {
         currentEntity = entityId;
+        if (debugLogging && entityId >= 0) {
+            LOGGER.debug("Rendering entity ID: {}", entityId);
+        }
     }
 
     public int getCurrentEntity() {
@@ -143,6 +260,9 @@ public final class CapturedRenderingState {
 
     public void setCurrentBlockEntity(int entityId) {
         currentBlockEntity = entityId;
+        if (debugLogging && entityId >= 0) {
+            LOGGER.debug("Rendering block entity ID: {}", entityId);
+        }
     }
 
     public int getCurrentBlockEntity() {
@@ -162,6 +282,11 @@ public final class CapturedRenderingState {
         MatrixMath.invert(gbufferModelView, modelViewInverse);
         MatrixMath.invert(gbufferProjection, projectionInverse);
         MatrixMath.multiply(gbufferProjection, gbufferModelView, modelViewProjection);
+
+        if (debugLogging && (frameCount % 100 == 0)) {
+            LOGGER.debug("Captured matrices - ModelView[0]={}, Projection[0]={}", 
+                gbufferModelView[0], gbufferProjection[0]);
+        }
     }
 
     private void captureFogColor() {
