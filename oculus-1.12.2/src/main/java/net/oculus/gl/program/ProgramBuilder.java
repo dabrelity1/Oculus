@@ -1,5 +1,6 @@
 package net.oculus.gl.program;
 
+import java.nio.Buffer;
 import java.nio.ByteBuffer;
 import java.nio.IntBuffer;
 import java.nio.charset.StandardCharsets;
@@ -150,10 +151,10 @@ public final class ProgramBuilder implements ImageHolder {
         ByteBuffer nameBuffer = BufferUtils.createByteBuffer(maxNameLength);
 
         for (int index = 0; index < uniformCount; index++) {
-            lengthBuffer.clear();
-            sizeBuffer.clear();
-            typeBuffer.clear();
-            nameBuffer.clear();
+            ((Buffer) lengthBuffer).clear();
+            ((Buffer) sizeBuffer).clear();
+            ((Buffer) typeBuffer).clear();
+            ((Buffer) nameBuffer).clear();
 
             GL20.glGetActiveUniform(program, index, lengthBuffer, sizeBuffer, typeBuffer, nameBuffer);
 
@@ -163,7 +164,7 @@ public final class ProgramBuilder implements ImageHolder {
             }
 
             byte[] nameBytes = new byte[nameLength];
-            nameBuffer.position(0);
+            ((Buffer) nameBuffer).position(0);
             nameBuffer.get(nameBytes, 0, nameLength);
 
             String rawName = new String(nameBytes, StandardCharsets.UTF_8);

@@ -1,5 +1,6 @@
 package net.oculus.gl.program;
 
+import java.nio.Buffer;
 import java.nio.FloatBuffer;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -177,7 +178,7 @@ public final class ProgramUniforms {
                     return;
                 }
 
-                buffer.clear();
+                ((Buffer) buffer).clear();
                 int length = Math.min(values.length, 16);
                 buffer.put(values, 0, length);
                 if (length < 16) {
@@ -185,7 +186,7 @@ public final class ProgramUniforms {
                         buffer.put(0.0F);
                     }
                 }
-                buffer.flip();
+                ((Buffer) buffer).flip();
                 GL20.glUniformMatrix4(location, false, buffer);
             });
         }

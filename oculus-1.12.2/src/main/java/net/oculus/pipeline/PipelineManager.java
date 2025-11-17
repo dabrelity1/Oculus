@@ -100,7 +100,10 @@ public final class PipelineManager {
     }
 
     public void endWorldRendering() {
-        getPipeline().endWorldRendering();
+        WorldRenderingPipeline active = getPipelineNullable();
+        if (active != null) {
+            active.finalizeLevelRendering();
+        }
     }
 
     public int getVersionCounterForSodiumShaderReload() {

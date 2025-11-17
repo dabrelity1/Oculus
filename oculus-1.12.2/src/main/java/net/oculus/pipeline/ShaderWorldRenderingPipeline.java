@@ -1,43 +1,42 @@
 package net.oculus.pipeline;
 
-import java.util.Map;
+import java.util.List;
 import java.util.Objects;
+import java.util.OptionalInt;
 
+import com.github.zsoltmolnarr.oculus.client.render.gl.framebuffer.Framebuffer;
+import com.github.zsoltmolnarr.oculus.client.render.gl.framebuffer.FramebufferManager;
+import com.github.zsoltmolnarr.oculus.client.render.gl.framebuffer.RenderTarget;
+import com.github.zsoltmolnarr.oculus.client.render.gl.program.InternalPrograms;
+import com.github.zsoltmolnarr.oculus.client.render.gl.program.Program;
+import com.github.zsoltmolnarr.oculus.client.render.gl.program.ProgramManager;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
-import com.mojang.blaze3d.systems.RenderSystem;
-
-import net.oculus.gl.program.SamplerOverrideProvider;
-import net.oculus.gl.state.GameDataSuppliers;
 import net.minecraft.client.Minecraft;
-import net.oculus.layer.GbufferPrograms;
-import net.oculus.pipeline.compute.ComputeDispatchManager;
-import net.oculus.pipeline.context.ObjectContext;
-import net.oculus.pipeline.sampler.SamplerOverrideConfigurator;
-import net.oculus.pipeline.texture.CustomTextureManager;
-import net.oculus.pipeline.framebuffer.FramebufferManager;
-import net.oculus.pipeline.gterrain.GlobalTerrainFramebuffers;
-import net.oculus.pipeline.shadow.ShadowMap;
-import net.oculus.shader.ShaderLoader;
+import net.minecraft.client.renderer.BufferBuilder;
+import net.minecraft.client.renderer.GlStateManager;
+import net.minecraft.client.renderer.RenderGlobal;
+import net.minecraft.client.renderer.Tessellator;
+import net.minecraft.client.renderer.vertex.DefaultVertexFormats;
+import net.minecraft.entity.Entity;
+import net.oculus.Oculus;
+import net.oculus.shaderpack.CloudSetting;
 import net.oculus.shaderpack.PackDirectives;
 import net.oculus.shaderpack.PackRenderTargetDirectives;
+import net.oculus.shaderpack.PackShadowDirectives;
 import net.oculus.shaderpack.ProgramSet;
 import net.oculus.shaderpack.ShaderPack;
 import net.oculus.shaderpack.ShaderProperties;
-import net.oculus.uniforms.CapturedRenderingState;
-import net.oculus.uniforms.CelestialUniforms;
-import net.oculus.uniforms.CompatibilityUniforms;
-import net.oculus.uniforms.GameplayUniforms;
-import net.oculus.uniforms.ShadowUniforms;
-import net.oculus.uniforms.SystemTimeUniforms;
-import net.oculus.util.Config;
+import net.oculus.uniforms.FrameUpdateNotifier;
+import org.lwjgl.opengl.GL11;
+import org.lwjgl.opengl.GL13;
+import org.lwjgl.opengl.GL30;
 
 /**
- * High-level orchestration for the shader-driven world renderer. This mirrors
- * the structure of the 1.16.5 implementation by wiring together the shader
- * loader, framebuffer manager, and terrain buffers while deferring low-level GL
- * work to future tasks.
+ * Skeleton implementation of the shader-driven world renderer. The goal for this porting
+ * step is to mirror the 1.16.5 API surface without attempting to wire up the full GL
+ * behaviour yet.
  */
 public final class ShaderWorldRenderingPipeline implements WorldRenderingPipeline {
     private static final Logger LOGGER = LogManager.getLogger(ShaderWorldRenderingPipeline.class);
@@ -46,114 +45,126 @@ public final class ShaderWorldRenderingPipeline implements WorldRenderingPipelin
     private final ProgramSet programSet;
     private final ShaderProperties shaderProperties;
     private final PackDirectives directives;
-    private final Config config;
-    private final ObjectContext objectContext;
-    private final SamplerOverrideProvider samplerOverrideProvider;
-    private final ShaderLoader shaderLoader;
-    private final CustomTextureManager customTextureManager;
+    private final PackRenderTargetDirectives renderTargetDirectives;
+    private final PackShadowDirectives shadowDirectives;
+    private final FramebufferManager framebufferManager;
+    private final ProgramManager programManager = new ProgramManager();
+    private Framebuffer gbufferFramebuffer;
+    private final int[] gbufferDrawBuffers;
+    private boolean framebuffersInitialized;
+    private boolean gbufferBound;
+    private Program passthroughProgram;
 
-    private FramebufferManager framebufferManager;
-    private GlobalTerrainFramebuffers terrainFramebuffers;
-    private ShadowMap shadowMap;
-    private ComputeDispatchManager computeDispatchManager;
+    private final FrameUpdateNotifier frameUpdateNotifier = new FrameUpdateNotifier();
+    private final RenderTargetStateListener renderTargetStateListener = RenderTargetStateListener.NOP;
+    private final SodiumTerrainPipeline sodiumTerrainPipeline = SodiumTerrainPipeline.NULL_PIPELINE;
 
-    private boolean setupComplete;
-    private boolean prepared;
+    private final CloudSetting cloudSetting;
+    private final boolean renderUnderwaterOverlay;
+    private final boolean renderVignette;
+    private final boolean renderSun;
+    private final boolean renderMoon;
+    private final boolean writeRainAndSnowToDepthBuffer;
+    private final boolean renderParticlesBeforeDeferred;
+    private final boolean allowConcurrentCompute;
+    private final boolean oldLighting;
+    private final OptionalInt forcedShadowDistanceChunks;
+
     private WorldRenderingPhase phase = WorldRenderingPhase.NONE;
     private WorldRenderingPhase overridePhase;
+    private InputAvailability inputs = new InputAvailability(false, false, false);
+    private SpecialCondition specialCondition;
+    private boolean prepared;
+    private boolean setupLogged;
+    private int currentNormalTexture;
+    private int currentSpecularTexture;
 
     public ShaderWorldRenderingPipeline(ShaderPack pack, ProgramSet programSet, ShaderProperties shaderProperties) {
         this.pack = Objects.requireNonNull(pack, "pack");
         this.programSet = Objects.requireNonNull(programSet, "programSet");
         this.shaderProperties = Objects.requireNonNull(shaderProperties, "shaderProperties");
         this.directives = Objects.requireNonNull(programSet.getPackDirectives(), "directives");
-        this.config = Config.get();
-        this.objectContext = new ObjectContext(pack, shaderProperties);
-        this.customTextureManager = CustomTextureManager.fromShaderPack(pack);
-        SamplerOverrideConfigurator samplerConfigurator = SamplerOverrideConfigurator.create(directives);
-        this.samplerOverrideProvider = samplerConfigurator.buildProvider();
-        this.shaderLoader = new ShaderLoader(programSet, samplerOverrideProvider, customTextureManager);
-        CelestialUniforms.configure(this.directives);
-        ShadowUniforms.configure(this.directives);
-        GbufferPrograms.init();
-        RenderSystem.initializeShaderPipeline();
+        this.renderTargetDirectives = directives.getRenderTargetDirectives();
+        this.shadowDirectives = directives.getShadowDirectives();
+    this.framebufferManager = new FramebufferManager(this.directives);
+    this.gbufferDrawBuffers = resolveDrawBuffers(this.renderTargetDirectives);
+
+        this.cloudSetting = directives.getCloudSetting();
+        this.renderUnderwaterOverlay = directives.underwaterOverlay();
+        this.renderVignette = directives.vignette();
+        this.renderSun = directives.shouldRenderSun();
+        this.renderMoon = directives.shouldRenderMoon();
+        this.writeRainAndSnowToDepthBuffer = directives.rainDepth();
+        this.renderParticlesBeforeDeferred = directives.areParticlesBeforeDeferred();
+        this.allowConcurrentCompute = directives.getConcurrentCompute();
+        this.oldLighting = directives.isOldLighting();
+        this.forcedShadowDistanceChunks = resolveForcedShadowDistance(shadowDirectives);
+
+        LOGGER.info("Initialized shader pipeline skeleton for pack {}", pack.getName());
     }
 
-    public void setup() {
-        if (setupComplete) {
+    private OptionalInt resolveForcedShadowDistance(PackShadowDirectives shadowDirectives) {
+        if (shadowDirectives == null || !shadowDirectives.isDistanceRenderMulExplicit()) {
+            return OptionalInt.empty();
+        }
+
+        float mul = shadowDirectives.getDistanceRenderMul();
+        if (mul < 0.0F) {
+            return OptionalInt.of(-1);
+        }
+
+        float distance = shadowDirectives.getDistance();
+        int chunks = (int) Math.ceil((distance * mul) / 16.0F);
+        return OptionalInt.of(chunks);
+    }
+
+    private static int[] resolveDrawBuffers(PackRenderTargetDirectives renderTargetDirectives) {
+        int[] resolved = renderTargetDirectives.getRenderTargetSettings().keySet().stream()
+            .sorted()
+            .mapToInt(Integer::intValue)
+            .toArray();
+
+        return resolved.length == 0 ? new int[] {0} : resolved;
+    }
+
+    private void ensureSetup() {
+        if (setupLogged) {
             return;
         }
 
-        LOGGER.info("Setting up shader pipeline for pack {}", pack.getName());
-
-        customTextureManager.initialize();
-        shaderLoader.initialize(objectContext);
-        computeDispatchManager = new ComputeDispatchManager(programSet, samplerOverrideProvider);
-
-        framebufferManager = new FramebufferManager(directives, shaderProperties, config);
-        framebufferManager.prepareGbuffers();
-        customTextureManager.applyGlobalOverrides();
-
-        shadowMap = new ShadowMap(directives, shaderProperties, config);
-        framebufferManager.attachShadowMap(shadowMap);
-
-        terrainFramebuffers = new GlobalTerrainFramebuffers(framebufferManager, directives);
-        if (config.terrainFramebuffersEnabled(shaderProperties)) {
-            terrainFramebuffers.initialize();
-        }
-
-        PackRenderTargetDirectives renderTargets = directives.getRenderTargetDirectives();
-        Map<Integer, ?> settings = renderTargets.getRenderTargetSettings();
-        LOGGER.debug("Configured {} gbuffer targets for pack {}", settings.size(), pack.getName());
-
-        if (framebufferManager.hasShadowMap()) {
-            LOGGER.debug("Shadow map enabled at {}x{} resolution", shadowMap.getResolution(), shadowMap.getResolution());
-        } else {
-            LOGGER.debug("Shadow map disabled by pack directives");
-        }
-
-        setupComplete = true;
+        LOGGER.info("Preparing framebuffer/layout stubs for {}", pack.getName());
+        PackRenderTargetDirectives targets = renderTargetDirectives;
+        LOGGER.debug("Render target directives: {} entries", targets.getRenderTargetSettings().size());
+        setupLogged = true;
     }
 
     @Override
     public void beginWorldRendering(float partialTicks) {
-        setup();
-        GameDataSuppliers.setPartialTicks(partialTicks);
-        SystemTimeUniforms.COUNTER.beginFrame();
-        SystemTimeUniforms.TIMER.beginFrame(System.nanoTime());
-        CapturedRenderingState.INSTANCE.beginFrame(partialTicks);
-        CompatibilityUniforms.onFrameStart();
-    GameplayUniforms.onFrameStart();
+        beginLevelRendering();
+        bindGbufferFramebuffer();
+    }
+
+    @Override
+    public void beginLevelRendering() {
+        ensureSetup();
         prepared = true;
-        RenderSystem.pushMatrix();
-        RenderSystem.enableBlend();
-        RenderSystem.setShaderColor(1.0F, 1.0F, 1.0F, 1.0F);
-
-        dispatchComputeStages();
+        frameUpdateNotifier.onNewFrame();
     }
 
     @Override
-    public void endWorldRendering() {
-        if (!prepared) {
-            return;
-        }
-
-        RenderSystem.disableBlend();
-        RenderSystem.popMatrix();
-        RenderSystem.resetTextureBindings();
-        prepared = false;
+    public void renderShadows(RenderGlobal renderGlobal, Entity cameraEntity) {
+        // TODO: Port 1.16.5 shadow rendering orchestration
     }
 
     @Override
-    public void setPhase(WorldRenderingPhase phase) {
-        this.phase = phase == null ? WorldRenderingPhase.NONE : phase;
-        GbufferPrograms.runPhaseChangeNotifier();
+    public void addDebugText(List<String> messages) {
+        messages.add("Oculus shader pipeline (stub) active for " + pack.getName());
+        messages.add("Phase: " + getPhase());
     }
 
     @Override
-    public void setOverridePhase(WorldRenderingPhase phase) {
-        this.overridePhase = phase;
-        GbufferPrograms.runPhaseChangeNotifier();
+    public OptionalInt getForcedShadowRenderDistanceChunksForDisplay() {
+        return forcedShadowDistanceChunks;
     }
 
     @Override
@@ -162,53 +173,268 @@ public final class ShaderWorldRenderingPipeline implements WorldRenderingPipelin
     }
 
     @Override
+    public void beginSodiumTerrainRendering() {
+        // TODO: Integrate Sodium terrain once the renderer is available on 1.12.2
+    }
+
+    @Override
+    public void endSodiumTerrainRendering() {
+        // TODO: Integrate Sodium terrain once the renderer is available on 1.12.2
+    }
+
+    @Override
+    public void setOverridePhase(WorldRenderingPhase phase) {
+        this.overridePhase = phase;
+    }
+
+    @Override
+    public void setPhase(WorldRenderingPhase phase) {
+        this.phase = phase == null ? WorldRenderingPhase.NONE : phase;
+    }
+
+    @Override
+    public void setInputs(InputAvailability availability) {
+        this.inputs = availability == null ? new InputAvailability(false, false, false) : availability;
+    }
+
+    @Override
+    public void setSpecialCondition(SpecialCondition special) {
+        this.specialCondition = special;
+    }
+
+    @Override
+    public void syncProgram() {
+        LOGGER.debug("Shader pipeline program sync requested (stub)");
+    }
+
+    @Override
+    public RenderTargetStateListener getRenderTargetStateListener() {
+        return renderTargetStateListener;
+    }
+
+    @Override
+    public int getCurrentNormalTexture() {
+        return currentNormalTexture;
+    }
+
+    @Override
+    public int getCurrentSpecularTexture() {
+        return currentSpecularTexture;
+    }
+
+    @Override
+    public void onBindTexture(int id) {
+        // TODO: Track texture bindings once the pipeline drives GL state
+    }
+
+    @Override
+    public void beginHand() {
+        LOGGER.debug("Shader pipeline beginHand stub invoked");
+    }
+
+    @Override
+    public void beginTranslucents() {
+        LOGGER.debug("Shader pipeline beginTranslucents stub invoked");
+    }
+
+    @Override
+    public void finalizeLevelRendering() {
+        if (!prepared) {
+            return;
+        }
+
+        runCompositePass();
+        prepared = false;
+        gbufferBound = false;
+        phase = WorldRenderingPhase.NONE;
+        overridePhase = null;
+    }
+
+    @Override
     public void destroy() {
-        if (terrainFramebuffers != null) {
-            terrainFramebuffers.destroy();
-            terrainFramebuffers = null;
-        }
-
-        if (framebufferManager != null) {
-            framebufferManager.destroy();
-            framebufferManager = null;
-        }
-
-        if (computeDispatchManager != null) {
-            computeDispatchManager.destroy();
-            computeDispatchManager = null;
-        }
-
-        if (customTextureManager != null) {
-            customTextureManager.destroy();
-        }
-
-        shaderLoader.destroy();
-        RenderSystem.releaseShaderPipeline();
-        setupComplete = false;
+        framebufferManager.destroy();
+    programManager.destroyAll();
+    passthroughProgram = null;
+        gbufferFramebuffer = null;
+        framebuffersInitialized = false;
+        gbufferBound = false;
+        prepared = false;
+        setupLogged = false;
+        currentNormalTexture = 0;
+        currentSpecularTexture = 0;
+        LOGGER.info("Destroyed shader pipeline skeleton for {}", pack.getName());
     }
 
-    public ShaderPack getPack() {
-        return pack;
+    @Override
+    public SodiumTerrainPipeline getSodiumTerrainPipeline() {
+        return sodiumTerrainPipeline;
     }
 
-    public ProgramSet getProgramSet() {
-        return programSet;
+    @Override
+    public FrameUpdateNotifier getFrameUpdateNotifier() {
+        return frameUpdateNotifier;
     }
 
-    public PackDirectives getPackDirectives() {
-        return directives;
+    @Override
+    public boolean shouldDisableVanillaEntityShadows() {
+        return true;
     }
 
-    private void dispatchComputeStages() {
-        if (computeDispatchManager == null || !computeDispatchManager.hasComputes()) {
+    @Override
+    public boolean shouldDisableDirectionalShading() {
+        return oldLighting;
+    }
+
+    @Override
+    public CloudSetting getCloudSetting() {
+        return cloudSetting;
+    }
+
+    @Override
+    public boolean shouldRenderUnderwaterOverlay() {
+        return renderUnderwaterOverlay;
+    }
+
+    @Override
+    public boolean shouldRenderVignette() {
+        return renderVignette;
+    }
+
+    @Override
+    public boolean shouldRenderSun() {
+        return renderSun;
+    }
+
+    @Override
+    public boolean shouldRenderMoon() {
+        return renderMoon;
+    }
+
+    @Override
+    public boolean shouldWriteRainAndSnowToDepthBuffer() {
+        return writeRainAndSnowToDepthBuffer;
+    }
+
+    @Override
+    public boolean shouldRenderParticlesBeforeDeferred() {
+        return renderParticlesBeforeDeferred;
+    }
+
+    @Override
+    public boolean allowConcurrentCompute() {
+        return allowConcurrentCompute;
+    }
+
+    @Override
+    public float getSunPathRotation() {
+        return directives.getSunPathRotation();
+    }
+
+    @Override
+    public FramebufferManager getFramebufferManager() {
+        return framebufferManager;
+    }
+
+    private void bindGbufferFramebuffer() {
+        ensureFramebufferManagerInitialized();
+        ensureFramebufferDimensionsUpToDate();
+        Framebuffer framebuffer = getOrCreateGbufferFramebuffer();
+        framebuffer.bind();
+        gbufferBound = true;
+        Oculus.LOGGER.info("Binding g-buffers for {}", pack.getName());
+    }
+
+    private void ensureFramebufferManagerInitialized() {
+        if (framebuffersInitialized) {
+            return;
+        }
+        framebufferManager.initialize();
+        framebuffersInitialized = true;
+    }
+
+    private void ensureFramebufferDimensionsUpToDate() {
+        Minecraft minecraft = Minecraft.getMinecraft();
+        if (minecraft == null) {
+            return;
+        }
+
+        int displayWidth = Math.max(1, minecraft.displayWidth);
+        int displayHeight = Math.max(1, minecraft.displayHeight);
+        framebufferManager.resizeIfNeeded(displayWidth, displayHeight);
+    }
+
+    private Framebuffer getOrCreateGbufferFramebuffer() {
+        if (gbufferFramebuffer == null) {
+            gbufferFramebuffer = framebufferManager.createFramebuffer(false, gbufferDrawBuffers);
+        }
+        return gbufferFramebuffer;
+    }
+
+    private void runCompositePass() {
+        if (!gbufferBound) {
+            return;
+        }
+
+        if (gbufferDrawBuffers.length == 0) {
+            LOGGER.warn("No g-buffer draw buffers configured; skipping composite pass");
             return;
         }
 
         Minecraft minecraft = Minecraft.getMinecraft();
-        int width = minecraft != null ? minecraft.displayWidth : 0;
-        int height = minecraft != null ? minecraft.displayHeight : 0;
-        int shadowResolution = shadowMap != null && shadowMap.isEnabled() ? shadowMap.getResolution() : 0;
+        if (minecraft == null) {
+            return;
+        }
 
-        computeDispatchManager.dispatchFrame(width, height, shadowResolution);
+        Program program = getPassthroughProgram();
+        if (program == null) {
+            return;
+        }
+
+        RenderTarget colorTarget = framebufferManager.getRenderTarget(gbufferDrawBuffers[0]);
+        int colorTexture = colorTarget.getMainTexture();
+
+        int viewportWidth = Math.max(1, minecraft.displayWidth);
+        int viewportHeight = Math.max(1, minecraft.displayHeight);
+
+        GL30.glBindFramebuffer(GL30.GL_FRAMEBUFFER, 0);
+        GL11.glViewport(0, 0, viewportWidth, viewportHeight);
+
+    GlStateManager.disableDepth();
+    GlStateManager.depthMask(false);
+
+        GL13.glActiveTexture(GL13.GL_TEXTURE0);
+        GL11.glBindTexture(GL11.GL_TEXTURE_2D, colorTexture);
+
+        program.use();
+        program.uniform("u_ColorTexture").setInt(0);
+
+        drawFullscreenQuad();
+
+        Program.unbind();
+        GL11.glBindTexture(GL11.GL_TEXTURE_2D, 0);
+        GL13.glActiveTexture(GL13.GL_TEXTURE0);
+
+        GlStateManager.enableDepth();
+        GlStateManager.depthMask(true);
+
+        gbufferBound = false;
+    }
+
+    private Program getPassthroughProgram() {
+        if (passthroughProgram == null) {
+            passthroughProgram = programManager.getOrCreate(InternalPrograms.PASSTHROUGH);
+        }
+        return passthroughProgram;
+    }
+
+    private static void drawFullscreenQuad() {
+        Tessellator tessellator = Tessellator.getInstance();
+        BufferBuilder builder = tessellator.getBuffer();
+        builder.begin(GL11.GL_QUADS, DefaultVertexFormats.POSITION_TEX);
+        builder.pos(-1.0D, -1.0D, 0.0D).tex(0.0D, 0.0D).endVertex();
+        builder.pos(1.0D, -1.0D, 0.0D).tex(1.0D, 0.0D).endVertex();
+        builder.pos(1.0D, 1.0D, 0.0D).tex(1.0D, 1.0D).endVertex();
+        builder.pos(-1.0D, 1.0D, 0.0D).tex(0.0D, 1.0D).endVertex();
+        tessellator.draw();
     }
 }

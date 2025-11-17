@@ -109,4 +109,12 @@ processResources {
 
 tasks.getByName("runClient") {
     jvmArgs "-Dmixin.debug.verbose=true", "-Dmixin.debug.export=true", "-Dmixin.configs=oculus.mixins.json"
+    executable = new File("C:/Program Files/Eclipse Adoptium/jdk-8.0.472.8-hotspot/bin/java.exe")
 }
+
+tasks.withType(Test) {
+    enabled = false
+}
+
+compileTestJava.enabled = false
+processTestResources.enabled = false

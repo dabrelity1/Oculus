@@ -1,5 +1,6 @@
 package net.oculus.gl.state;
 
+import java.nio.Buffer;
 import java.nio.FloatBuffer;
 
 import org.lwjgl.BufferUtils;
@@ -18,16 +19,16 @@ public final class MatrixState {
     }
 
     public static FloatBuffer updateModelViewMatrix() {
-        MODEL_VIEW.clear();
+        ((Buffer) MODEL_VIEW).clear();
         GL11.glGetFloat(GL11.GL_MODELVIEW_MATRIX, MODEL_VIEW);
-        MODEL_VIEW.rewind();
+        ((Buffer) MODEL_VIEW).rewind();
         return MODEL_VIEW;
     }
 
     public static FloatBuffer updateProjectionMatrix() {
-        PROJECTION.clear();
+        ((Buffer) PROJECTION).clear();
         GL11.glGetFloat(GL11.GL_PROJECTION_MATRIX, PROJECTION);
-        PROJECTION.rewind();
+        ((Buffer) PROJECTION).rewind();
         return PROJECTION;
     }
 }

@@ -1,5 +1,6 @@
 package net.oculus.gl.state;
 
+import java.nio.Buffer;
 import java.nio.FloatBuffer;
 import java.util.function.IntSupplier;
 import java.util.function.Supplier;
@@ -98,7 +99,7 @@ public final class GameDataSuppliers {
         Entity entity = mc != null ? mc.getRenderViewEntity() : null;
         float partialTicks = resolvePartialTicks(mc);
 
-        CAMERA_POSITION.clear();
+    ((Buffer) CAMERA_POSITION).clear();
 
         if (entity == null) {
             CAMERA_POSITION.put(0.0F).put(0.0F).put(0.0F);
@@ -109,22 +110,22 @@ public final class GameDataSuppliers {
             CAMERA_POSITION.put((float) x).put((float) y).put((float) z);
         }
 
-        CAMERA_POSITION.flip();
+    ((Buffer) CAMERA_POSITION).flip();
         return CAMERA_POSITION;
     }
 
     private static FloatBuffer updateFogColor() {
-        FOG_COLOR.clear();
+        ((Buffer) FOG_COLOR).clear();
         GL11.glGetFloat(GL11.GL_FOG_COLOR, FOG_COLOR);
-        FOG_COLOR.limit(4);
-        FOG_COLOR.position(0);
+        ((Buffer) FOG_COLOR).limit(4);
+        ((Buffer) FOG_COLOR).position(0);
         return FOG_COLOR;
     }
 
     private static float readFogValue(int pname) {
-        SINGLE_FLOAT.clear();
+        ((Buffer) SINGLE_FLOAT).clear();
         GL11.glGetFloat(pname, SINGLE_FLOAT);
-        SINGLE_FLOAT.position(0);
+        ((Buffer) SINGLE_FLOAT).position(0);
         return SINGLE_FLOAT.get(0);
     }
 

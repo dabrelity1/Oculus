@@ -13,6 +13,7 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
+import net.oculus.Oculus;
 import net.oculus.pipeline.PipelineManager;
 import net.oculus.pipeline.WorldRenderingPhase;
 import net.oculus.pipeline.WorldRenderingPipeline;
@@ -25,6 +26,7 @@ import net.oculus.pipeline.WorldRenderingPipeline;
 public abstract class WorldRendererMixin {
     @Inject(method = "renderSky(FI)V", at = @At("HEAD"))
     private void oculus$beginSky(float partialTicks, int pass, CallbackInfo ci) {
+        Oculus.LOGGER.info("[Oculus] intercepting renderSky (pass={})", pass);
         setPhase(WorldRenderingPhase.CUSTOM_SKY);
     }
 
@@ -91,11 +93,24 @@ public abstract class WorldRendererMixin {
     @Inject(method = "renderBlockLayer(Lnet/minecraft/util/BlockRenderLayer;DILnet/minecraft/entity/Entity;)I", at = @At("HEAD"))
     private void oculus$beginBlockLayer(BlockRenderLayer layer, double partialTicks, int pass, Entity entity, CallbackInfoReturnable<Integer> cir) {
         setPhase(WorldRenderingPhase.fromBlockRenderLayer(layer));
+        if (layer == BlockRenderLayer.TRANSLUCENT) {
+            WorldRenderingPipeline pipeline = PipelineManager.INSTANCE.getPipelineNullable();
+            if (pipeline != null) {
+                Oculus.LOGGER.info("[Oculus] intercepting translucent renderBlockLayer -> beginTranslucents");
+                pipeline.beginTranslucents();
+            }
+        }
     }
 
     @Inject(method = "renderBlockLayer(Lnet/minecraft/util/BlockRenderLayer;DILnet/minecraft/entity/Entity;)I", at = @At("RETURN"))
     private void oculus$endBlockLayer(BlockRenderLayer layer, double partialTicks, int pass, Entity entity, CallbackInfoReturnable<Integer> cir) {
         setPhase(WorldRenderingPhase.NONE);
+        if (layer == BlockRenderLayer.TRANSLUCENT) {
+            WorldRenderingPipeline pipeline = PipelineManager.INSTANCE.getPipelineNullable();
+            if (pipeline != null) {
+                Oculus.LOGGER.info("[Oculus] intercepting translucent renderBlockLayer -> end");
+            }
+        }
     }
 
     @Inject(method = "renderEntities(Lnet/minecraft/entity/Entity;Lnet/minecraft/client/renderer/culling/ICamera;F)V", at = @At("HEAD"))

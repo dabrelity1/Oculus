@@ -1,5 +1,6 @@
 package net.oculus.pipeline.framebuffer;
 
+import java.nio.Buffer;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -236,7 +237,7 @@ public final class FramebufferManager {
             buffer.put((byte) noiseRandom.nextInt(256));
             buffer.put((byte) 255);
         }
-        buffer.flip();
+    ((Buffer) buffer).flip();
 
         GL11.glTexImage2D(GL11.GL_TEXTURE_2D, 0, GL11.GL_RGBA8, NOISE_SIZE, NOISE_SIZE, 0, GL11.GL_RGBA, GL11.GL_UNSIGNED_BYTE, buffer);
         GL11.glBindTexture(GL11.GL_TEXTURE_2D, 0);

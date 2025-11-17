@@ -1,5 +1,6 @@
 package net.oculus.gl.state;
 
+import java.nio.Buffer;
 import java.nio.FloatBuffer;
 import java.util.Arrays;
 
@@ -30,9 +31,9 @@ public final class MatrixMath {
             return;
         }
 
-        source.rewind();
+        ((Buffer) source).rewind();
         source.get(target, 0, 16);
-        source.rewind();
+        ((Buffer) source).rewind();
     }
 
     public static boolean invert(float[] source, float[] target) {

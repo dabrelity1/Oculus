@@ -6,6 +6,7 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
+import net.oculus.Oculus;
 import net.oculus.pipeline.PipelineManager;
 import net.oculus.pipeline.WorldRenderingPhase;
 import net.oculus.pipeline.WorldRenderingPipeline;
@@ -19,12 +20,17 @@ import net.oculus.pipeline.WorldRenderingPipeline;
 public abstract class LevelRendererMixin {
     @Inject(method = "renderWorld(FJ)V", at = @At("HEAD"))
     private void oculus$beginWorld(float partialTicks, long finishTimeNano, CallbackInfo ci) {
+        Oculus.LOGGER.info("[Oculus] intercepting renderWorld -> beginWorldRendering (partialTicks={}, finish={})", partialTicks, finishTimeNano);
         PipelineManager.INSTANCE.beginWorldRendering(partialTicks);
     }
 
     @Inject(method = "renderWorld(FJ)V", at = @At("RETURN"))
     private void oculus$endWorld(float partialTicks, long finishTimeNano, CallbackInfo ci) {
-        PipelineManager.INSTANCE.endWorldRendering();
+        WorldRenderingPipeline pipeline = PipelineManager.INSTANCE.getPipelineNullable();
+        if (pipeline != null) {
+            pipeline.finalizeLevelRendering();
+            Oculus.LOGGER.info("[Oculus] intercepting renderWorld -> finalizeLevelRendering");
+        }
     }
 
     @Inject(method = "renderRainSnow(F)V", at = @At("HEAD"))
@@ -41,6 +47,11 @@ public abstract class LevelRendererMixin {
     private void oculus$beginHand(float partialTicks, int pass, CallbackInfo ci) {
         WorldRenderingPhase phase = pass == 0 ? WorldRenderingPhase.HAND_SOLID : WorldRenderingPhase.HAND_TRANSLUCENT;
         setPhase(phase);
+        WorldRenderingPipeline pipeline = PipelineManager.INSTANCE.getPipelineNullable();
+        if (pipeline != null) {
+            Oculus.LOGGER.info("[Oculus] intercepting renderHand (pass={})", pass);
+            pipeline.beginHand();
+        }
     }
 
     @Inject(method = "renderHand(FI)V", at = @At("RETURN"))
