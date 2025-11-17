@@ -7,7 +7,25 @@ import net.minecraft.entity.Entity;
 import net.minecraft.util.math.Vec3d;
 
 /**
- * Tracks a precision-friendly camera position similar to Iris's CameraPositionTracker.
+ * Tracks camera position with automatic precision-preserving coordinate shifting.
+ * 
+ * <p>This class solves the floating-point precision problem that occurs when rendering
+ * at large world coordinates (e.g., millions of blocks from origin). It maintains
+ * a shifted coordinate system where the camera position stays within a reasonable range
+ * (±30,000 blocks) while the {@code shift} vector tracks the accumulated offset.</p>
+ * 
+ * <p><b>Coordinate Shifting Algorithm:</b></p>
+ * <ul>
+ *   <li>If camera X or Z exceeds ±30,000 blocks, shift coordinates back toward origin</li>
+ *   <li>Shifts are applied in 30,000-block increments to minimize jitter</li>
+ *   <li>If player teleports >1,000 blocks, immediately re-center coordinates</li>
+ *   <li>Shifts are applied to both current and previous positions to maintain deltas</li>
+ * </ul>
+ * 
+ * <p>This approach maintains sub-block precision even at extreme coordinates while
+ * keeping shader uniform values in a numerically stable range.</p>
+ * 
+ * @see CapturedRenderingState#beginFrame(float)
  */
 final class CameraPositionTracker {
     private static final double WALK_RANGE = 30000.0;
