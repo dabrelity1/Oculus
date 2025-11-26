@@ -4,24 +4,35 @@ import net.oculus.gl.GlResource;
 import net.oculus.gl.OculusRenderSystem;
 
 /**
- * Minimal shader program wrapper that mirrors the responsibilities of the 1.16.5 version.
- * The real OpenGL operations are deferred until the rendering backend is wired up.
+ * Shader program wrapper that handles uniform and sampler binding.
  */
 public class Program extends GlResource {
+    private final String name;
     private final ProgramUniforms uniforms;
     private final ProgramSamplers samplers;
     private final ProgramImages images;
 
-    Program(int program, ProgramUniforms uniforms, ProgramSamplers samplers, ProgramImages images) {
+    Program(String name, int program, ProgramUniforms uniforms, ProgramSamplers samplers, ProgramImages images) {
         super(program);
+        this.name = name;
         this.uniforms = uniforms;
         this.samplers = samplers;
         this.images = images;
     }
 
+    public String getName() {
+        return name;
+    }
+
     public void use() {
         OculusRenderSystem.glUseProgram(getGlId());
+    }
+    
+    public void bindUniforms() {
         uniforms.update();
+    }
+    
+    public void bindSamplers() {
         samplers.update();
         images.update();
     }

@@ -4,7 +4,10 @@ import it.unimi.dsi.fastutil.ints.Int2IntMap;
 import it.unimi.dsi.fastutil.ints.Int2IntOpenHashMap;
 import net.coderbot.iris.gl.GlResource;
 import net.coderbot.iris.gl.IrisRenderSystem;
+import org.lwjgl.opengl.EXTFramebufferBlit;
 import org.lwjgl.opengl.EXTFramebufferObject;
+import org.lwjgl.opengl.EXTPackedDepthStencil;
+import org.lwjgl.opengl.GL30;
 
 /**
  * Minimal framebuffer wrapper for the LWJGL 2 backport.
@@ -25,11 +28,11 @@ public final class GlFramebuffer extends GlResource {
     }
 
     public void bindForDrawing() {
-        IrisRenderSystem.bindFramebuffer(EXTFramebufferObject.GL_DRAW_FRAMEBUFFER_EXT, getGlId());
+        IrisRenderSystem.bindFramebuffer(EXTFramebufferBlit.GL_DRAW_FRAMEBUFFER_EXT, getGlId());
     }
 
     public void bindForReading() {
-        IrisRenderSystem.bindFramebuffer(EXTFramebufferObject.GL_READ_FRAMEBUFFER_EXT, getGlId());
+        IrisRenderSystem.bindFramebuffer(EXTFramebufferBlit.GL_READ_FRAMEBUFFER_EXT, getGlId());
     }
 
     public void attachColorTexture(int index, int textureTarget, int textureId) {
@@ -46,8 +49,10 @@ public final class GlFramebuffer extends GlResource {
 
     public void attachDepthTexture(int textureTarget, int textureId, boolean containsStencil) {
         bind();
+        // GL_DEPTH_STENCIL_ATTACHMENT is only available in GL 3.0+
+        // For 1.12.2 we need to use the packed depth stencil extension or just use GL30 if available
         int attachment = containsStencil
-                ? EXTFramebufferObject.GL_DEPTH_STENCIL_ATTACHMENT_EXT
+                ? GL30.GL_DEPTH_STENCIL_ATTACHMENT
                 : EXTFramebufferObject.GL_DEPTH_ATTACHMENT_EXT;
         IrisRenderSystem.framebufferTexture2D(
                 EXTFramebufferObject.GL_FRAMEBUFFER_EXT,

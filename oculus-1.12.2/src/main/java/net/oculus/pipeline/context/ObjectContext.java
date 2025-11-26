@@ -1,5 +1,7 @@
 package net.oculus.pipeline.context;
 
+import net.oculus.shaderpack.PackDirectives;
+import net.oculus.shaderpack.ProgramSet;
 import net.oculus.shaderpack.ShaderPack;
 import net.oculus.shaderpack.ShaderProperties;
 
@@ -16,6 +18,12 @@ public final class ObjectContext {
     public ObjectContext(ShaderPack pack, ShaderProperties properties) {
         this.pack = pack;
         this.properties = properties;
+    }
+    
+    public static ObjectContext forPipeline(ProgramSet programSet, PackDirectives directives) {
+        ShaderPack pack = programSet.getPack();
+        ShaderProperties properties = pack != null ? pack.getProperties() : null;
+        return new ObjectContext(pack, properties);
     }
 
     public ShaderPack getPack() {

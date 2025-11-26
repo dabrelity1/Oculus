@@ -22,8 +22,8 @@ public final class ComputeProgram extends Program {
     private float cachedWidth = -1.0F;
     private float cachedHeight = -1.0F;
 
-    ComputeProgram(int program, ProgramUniforms uniforms, ProgramSamplers samplers, ProgramImages images) {
-        super(program, uniforms, samplers, images);
+    ComputeProgram(String name, int program, ProgramUniforms uniforms, ProgramSamplers samplers, ProgramImages images) {
+        super(name, program, uniforms, samplers, images);
         readLocalWorkGroupSize(program);
     }
 

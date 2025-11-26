@@ -6,6 +6,7 @@ import net.coderbot.iris.gl.GlResource;
 import net.coderbot.iris.gl.IrisRenderSystem;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.lwjgl.opengl.GL11;
 import org.lwjgl.opengl.GL20;
 
 /**
@@ -34,7 +35,7 @@ public final class Shader extends GlResource {
         }
 
         int result = IrisRenderSystem.getShaderParameter(handle, GL20.GL_COMPILE_STATUS);
-        if (result != GL20.GL_TRUE) {
+        if (result != GL11.GL_TRUE) {
             IrisRenderSystem.deleteShader(handle);
             throw new IllegalStateException("Failed to compile " + type.name().toLowerCase(Locale.ROOT) + " shader '" + name + "'.");
         }

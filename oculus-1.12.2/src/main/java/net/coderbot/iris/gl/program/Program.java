@@ -7,6 +7,7 @@ import net.coderbot.iris.gl.IrisRenderSystem;
 import net.coderbot.iris.gl.shader.Shader;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.lwjgl.opengl.GL11;
 import org.lwjgl.opengl.GL20;
 
 public final class Program extends GlResource {
@@ -40,7 +41,7 @@ public final class Program extends GlResource {
         }
 
         int status = IrisRenderSystem.getProgramParameter(handle, GL20.GL_LINK_STATUS);
-        if (status != GL20.GL_TRUE) {
+        if (status != GL11.GL_TRUE) {
             IrisRenderSystem.deleteProgram(handle);
             throw new IllegalStateException("Failed to link shader program '" + name + "'.");
         }

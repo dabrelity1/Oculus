@@ -28,13 +28,16 @@ public final class TextureScaleOverride {
         try {
             if (token.contains(".")) {
                 float value = Float.parseFloat(token);
-                return new DimensionOverride(true, value, 0);
+                return new DimensionOverride(true, value, 0, false);
             }
 
             int intValue = Integer.parseInt(token);
-            return new DimensionOverride(false, 1.0F, intValue);
+            return new DimensionOverride(false, 1.0F, intValue, false);
         } catch (NumberFormatException exception) {
-            throw new IllegalArgumentException("Invalid " + axis + " dimension token '" + token + "'", exception);
+            // Handle custom defines like REFLECTION_RES, SHADOW_MAP_SIZE, etc.
+            // These are resolved at shader compile time, not here.
+            // Return a placeholder that marks this as unresolved.
+            return new DimensionOverride(true, 1.0F, 0, true);
         }
     }
 
@@ -42,11 +45,13 @@ public final class TextureScaleOverride {
         private final boolean isScale;
         private final float relative;
         private final int absolute;
+        private final boolean isUnresolved;
 
-        private DimensionOverride(boolean isScale, float relative, int absolute) {
+        private DimensionOverride(boolean isScale, float relative, int absolute, boolean isUnresolved) {
             this.isScale = isScale;
             this.relative = relative;
             this.absolute = absolute;
+            this.isUnresolved = isUnresolved;
         }
     }
 

@@ -679,11 +679,11 @@ public final class ProgramBuilder implements ImageHolder {
     }
 
     public Program build() {
-        return new Program(program, uniforms.build(), samplers.build(), images.build());
+        return new Program(name, program, uniforms.build(), samplers.build(), images.build());
     }
 
     public ComputeProgram buildCompute() {
-        return new ComputeProgram(program, uniforms.build(), samplers.build(), images.build());
+        return new ComputeProgram(name, program, uniforms.build(), samplers.build(), images.build());
     }
 
     // --- Sampler helpers --------------------------------------------------

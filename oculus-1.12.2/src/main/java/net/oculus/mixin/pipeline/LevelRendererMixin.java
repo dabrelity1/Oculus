@@ -18,9 +18,14 @@ import net.oculus.pipeline.WorldRenderingPipeline;
  */
 @Mixin(EntityRenderer.class)
 public abstract class LevelRendererMixin {
+    private static boolean debugLogged = false;
+    
     @Inject(method = "renderWorld(FJ)V", at = @At("HEAD"))
     private void oculus$beginWorld(float partialTicks, long finishTimeNano, CallbackInfo ci) {
-        Oculus.LOGGER.info("[Oculus] intercepting renderWorld -> beginWorldRendering (partialTicks={}, finish={})", partialTicks, finishTimeNano);
+        if (!debugLogged) {
+            Oculus.LOGGER.info("[Oculus] Pipeline active - intercepting world rendering");
+            debugLogged = true;
+        }
         PipelineManager.INSTANCE.beginWorldRendering(partialTicks);
     }
 
@@ -29,7 +34,6 @@ public abstract class LevelRendererMixin {
         WorldRenderingPipeline pipeline = PipelineManager.INSTANCE.getPipelineNullable();
         if (pipeline != null) {
             pipeline.finalizeLevelRendering();
-            Oculus.LOGGER.info("[Oculus] intercepting renderWorld -> finalizeLevelRendering");
         }
     }
 
@@ -49,7 +53,6 @@ public abstract class LevelRendererMixin {
         setPhase(phase);
         WorldRenderingPipeline pipeline = PipelineManager.INSTANCE.getPipelineNullable();
         if (pipeline != null) {
-            Oculus.LOGGER.info("[Oculus] intercepting renderHand (pass={})", pass);
             pipeline.beginHand();
         }
     }
