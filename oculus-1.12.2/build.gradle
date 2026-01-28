@@ -112,6 +112,82 @@ tasks.getByName("runClient") {
     executable = new File("C:/Program Files/Eclipse Adoptium/jdk-8.0.472.8-hotspot/bin/java.exe")
 }
 
+// Fix asset download - ForgeGradle 2.3 uses deprecated HTTP URL (http://resources.download.minecraft.net)
+// which now returns 400 errors. This task downloads assets using HTTPS instead.
+import groovy.json.JsonSlurper
+
+task downloadAssetsHttps {
+    def assetsDir = new File(gradle.gradleUserHomeDir, "caches/minecraft/assets")
+    def objectsDir = new File(assetsDir, "objects")
+    def indexesDir = new File(assetsDir, "indexes")
+    
+    outputs.dir(assetsDir)
+    
+    doLast {
+        objectsDir.mkdirs()
+        indexesDir.mkdirs()
+        
+        // Get asset index file
+        def indexFile = new File(indexesDir, "1.12.json")
+        if (!indexFile.exists()) {
+            println "Downloading asset index..."
+            def indexUrl = "https://piston-meta.mojang.com/mc/assets/1.12/67e29e024e664064c1f04c728604f83c24cbc218/1.12.json"
+            indexFile.parentFile.mkdirs()
+            indexFile.text = new URL(indexUrl).text
+        }
+        
+        // Parse asset index
+        def index = new JsonSlurper().parseText(indexFile.text)
+        def objects = index.objects
+        
+        def downloadCount = 0
+        def skipCount = 0
+        def failCount = 0
+        
+        objects.each { name, info ->
+            def hash = info.hash
+            def prefix = hash.substring(0, 2)
+            def targetDir = new File(objectsDir, prefix)
+            def targetFile = new File(targetDir, hash)
+            
+            if (targetFile.exists() && targetFile.length() == info.size) {
+                skipCount++
+                return
+            }
+            
+            targetDir.mkdirs()
+            
+            def assetUrl = "https://resources.download.minecraft.net/${prefix}/${hash}"
+            
+            try {
+                def connection = new URL(assetUrl).openConnection()
+                connection.connectTimeout = 10000
+                connection.readTimeout = 30000
+                
+                targetFile.withOutputStream { out ->
+                    out << connection.inputStream
+                }
+                downloadCount++
+                
+                if (downloadCount % 100 == 0) {
+                    println "Downloaded ${downloadCount} assets..."
+                }
+            } catch (Exception e) {
+                failCount++
+                if (failCount <= 10) {
+                    println "Warning: Failed to download ${name}: ${e.message}"
+                }
+            }
+        }
+        
+        println "Asset download complete: ${downloadCount} downloaded, ${skipCount} cached, ${failCount} failed"
+    }
+}
+
+// Replace the original getAssets task with our HTTPS version
+tasks.getAssets.enabled = false
+tasks.makeStart.dependsOn downloadAssetsHttps
+
 tasks.withType(Test) {
     enabled = false
 }

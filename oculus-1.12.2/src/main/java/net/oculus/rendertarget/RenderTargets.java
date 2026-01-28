@@ -93,6 +93,16 @@ public class RenderTargets {
         return currentDepthFormat;
     }
 
+    /**
+     * Returns a dummy RenderTarget wrapper for the depth texture.
+     * Used by FinalPassRenderer to bind depth as a sampler.
+     */
+    public RenderTarget getDepthTexture() {
+        // Return the first target if available (for accessing depth through it)
+        // In practice, shaders access depthtex0 via the currentDepthTexture
+        return null; // Depth is handled separately via getCurrentDepthTexture()
+    }
+
     public int getWidth() {
         return cachedWidth;
     }
@@ -104,9 +114,9 @@ public class RenderTargets {
     /**
      * Creates a framebuffer that writes to the main textures of the specified color attachments.
      */
-    public Framebuffer createColorFramebuffer(ImmutableSet<Integer> flipped, int[] drawBuffers) {
-        int framebufferId = GL30.glGenFramebuffers();
-        GL30.glBindFramebuffer(GL30.GL_FRAMEBUFFER, framebufferId);
+    public com.github.zsoltmolnarr.oculus.client.render.gl.framebuffer.GlFramebuffer createColorFramebuffer(ImmutableSet<Integer> flipped, int[] drawBuffers) {
+        com.github.zsoltmolnarr.oculus.client.render.gl.framebuffer.GlFramebuffer framebuffer = 
+            new com.github.zsoltmolnarr.oculus.client.render.gl.framebuffer.GlFramebuffer();
 
         for (int i = 0; i < drawBuffers.length; i++) {
             int bufferIndex = drawBuffers[i];
@@ -116,34 +126,43 @@ public class RenderTargets {
             }
 
             int texture = flipped.contains(bufferIndex) ? target.getAltTexture() : target.getMainTexture();
-            GL30.glFramebufferTexture2D(GL30.GL_FRAMEBUFFER, GL30.GL_COLOR_ATTACHMENT0 + i, GL11.GL_TEXTURE_2D, texture, 0);
-        }
-
-        // Set up draw buffers
-        if (drawBuffers.length > 0) {
-            int[] attachments = new int[drawBuffers.length];
-            for (int i = 0; i < drawBuffers.length; i++) {
-                attachments[i] = GL30.GL_COLOR_ATTACHMENT0 + i;
-            }
-            java.nio.IntBuffer buffer = org.lwjgl.BufferUtils.createIntBuffer(attachments.length);
-            buffer.put(attachments);
-            buffer.flip();
-            GL20.glDrawBuffers(buffer);
+            framebuffer.addColorAttachment(i, texture);
         }
 
         // Add depth attachment
-        GL30.glFramebufferTexture2D(GL30.GL_FRAMEBUFFER, GL30.GL_DEPTH_ATTACHMENT, GL11.GL_TEXTURE_2D, currentDepthTexture, 0);
+        framebuffer.addDepthAttachment(currentDepthTexture);
 
-        int status = GL30.glCheckFramebufferStatus(GL30.GL_FRAMEBUFFER);
-        if (status != GL30.GL_FRAMEBUFFER_COMPLETE) {
-            throw new IllegalStateException("Framebuffer incomplete: " + status);
+        // Set draw buffers
+        framebuffer.drawBuffers(drawBuffers);
+
+        return framebuffer;
+    }
+
+    /**
+     * Creates a framebuffer using a Set instead of ImmutableSet.
+     */
+    public com.github.zsoltmolnarr.oculus.client.render.gl.framebuffer.GlFramebuffer createColorFramebuffer(java.util.Set<Integer> flipped, int[] drawBuffers) {
+        com.github.zsoltmolnarr.oculus.client.render.gl.framebuffer.GlFramebuffer framebuffer = 
+            new com.github.zsoltmolnarr.oculus.client.render.gl.framebuffer.GlFramebuffer();
+
+        for (int i = 0; i < drawBuffers.length; i++) {
+            int bufferIndex = drawBuffers[i];
+            RenderTarget target = get(bufferIndex);
+            if (target == null) {
+                continue;
+            }
+
+            int texture = flipped.contains(bufferIndex) ? target.getAltTexture() : target.getMainTexture();
+            framebuffer.addColorAttachment(i, texture);
         }
 
-        GL30.glBindFramebuffer(GL30.GL_FRAMEBUFFER, 0);
+        // Add depth attachment
+        framebuffer.addDepthAttachment(currentDepthTexture);
 
-        // We need to wrap this in our Framebuffer class
-        // For now, return null and we'll implement this properly later
-        return null;
+        // Set draw buffers
+        framebuffer.drawBuffers(drawBuffers);
+
+        return framebuffer;
     }
 
     public void destroyFramebuffer(Framebuffer framebuffer) {

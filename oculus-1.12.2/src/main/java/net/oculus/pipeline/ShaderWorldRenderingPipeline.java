@@ -1,5 +1,6 @@
 package net.oculus.pipeline;
 
+import java.nio.IntBuffer;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -14,6 +15,7 @@ import com.github.zsoltmolnarr.oculus.client.render.gl.program.ProgramManager;
 import net.oculus.gl.program.Program;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.lwjgl.BufferUtils;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.BufferBuilder;
@@ -70,6 +72,16 @@ public final class ShaderWorldRenderingPipeline implements WorldRenderingPipelin
     private final FrameUpdateNotifier frameUpdateNotifier = new FrameUpdateNotifier();
     private final RenderTargetStateListener renderTargetStateListener = RenderTargetStateListener.NOP;
     private final SodiumTerrainPipeline sodiumTerrainPipeline = SodiumTerrainPipeline.NULL_PIPELINE;
+    
+    // Shadow rendering
+    private net.oculus.pipeline.shadow.ShadowRenderer shadowRenderer;
+    private net.oculus.pipeline.shadow.ShadowMap shadowMap;
+    
+    // Post-processing renderers
+    private net.oculus.postprocess.CompositeRenderer compositeRenderer;
+    private net.oculus.postprocess.FinalPassRenderer finalPassRenderer;
+    private net.oculus.postprocess.BufferFlipper bufferFlipper;
+    private net.oculus.rendertarget.RenderTargets renderTargets;
 
     private final CloudSetting cloudSetting;
     private final boolean renderUnderwaterOverlay;
@@ -115,7 +127,37 @@ public final class ShaderWorldRenderingPipeline implements WorldRenderingPipelin
         this.oldLighting = directives.isOldLighting();
         this.forcedShadowDistanceChunks = resolveForcedShadowDistance(shadowDirectives);
 
+        // Initialize shadow rendering if the shader pack uses shadows
+        initializeShadowRenderer();
+
         LOGGER.info("Initialized shader pipeline for pack {}", pack.getName());
+    }
+    
+    private void initializeShadowRenderer() {
+        if (shadowDirectives == null || shadowDirectives.getResolution() <= 0) {
+            this.shadowMap = null;
+            this.shadowRenderer = null;
+            return;
+        }
+        
+        // Create shadow map
+        this.shadowMap = new net.oculus.pipeline.shadow.ShadowMap(
+            directives, shaderProperties, net.oculus.util.Config.get());
+        
+        if (!shadowMap.isEnabled()) {
+            this.shadowRenderer = null;
+            return;
+        }
+        
+        // Get shadow program source
+        ProgramSource shadowSource = programSet.getShadow().orElse(null);
+        
+        // Create shadow renderer
+        this.shadowRenderer = new net.oculus.pipeline.shadow.ShadowRenderer(
+            directives, shadowDirectives, shadowSource, shadowMap);
+        
+        LOGGER.info("Shadow rendering enabled: {}x{}", 
+            shadowDirectives.getResolution(), shadowDirectives.getResolution());
     }
 
     private OptionalInt resolveForcedShadowDistance(PackShadowDirectives shadowDirectives) {
@@ -197,7 +239,13 @@ public final class ShaderWorldRenderingPipeline implements WorldRenderingPipelin
      * Binds the appropriate shader program for terrain rendering.
      */
     private void bindTerrainProgram() {
-        if (!shadersCompiled) {
+        if (!shadersCompiled || shaderLoader == null) {
+            return;
+        }
+        
+        // Check if any programs were actually compiled
+        Map<String, Program> programs = shaderLoader.getPrograms();
+        if (programs == null || programs.isEmpty()) {
             return;
         }
         
@@ -216,9 +264,15 @@ public final class ShaderWorldRenderingPipeline implements WorldRenderingPipelin
         if (terrainProgram != null) {
             activeGbufferProgram = terrainProgram;
             activeGbufferProgramName = terrainProgram.getName();
-            terrainProgram.use();
-            terrainProgram.bindUniforms();
-            terrainProgram.bindSamplers();
+            try {
+                terrainProgram.use();
+                terrainProgram.bindUniforms();
+                terrainProgram.bindSamplers();
+            } catch (Exception ex) {
+                LOGGER.warn("Failed to bind terrain program: {}", ex.getMessage());
+                activeGbufferProgram = null;
+                activeGbufferProgramName = null;
+            }
         }
     }
     
@@ -235,7 +289,9 @@ public final class ShaderWorldRenderingPipeline implements WorldRenderingPipelin
 
     @Override
     public void renderShadows(RenderGlobal renderGlobal, Entity cameraEntity) {
-        // TODO: Port 1.16.5 shadow rendering orchestration
+        if (shadowRenderer != null) {
+            shadowRenderer.renderShadows(renderGlobal, cameraEntity);
+        }
     }
 
     @Override
@@ -247,6 +303,11 @@ public final class ShaderWorldRenderingPipeline implements WorldRenderingPipelin
         }
         if (shadersCompiled) {
             messages.add("Programs loaded: " + shaderLoader.getPrograms().size());
+        }
+        if (shadowRenderer != null) {
+            shadowRenderer.addDebugText(messages);
+        } else {
+            messages.add("[Oculus] Shadow Maps: not used by shader pack");
         }
     }
 
@@ -435,30 +496,41 @@ public final class ShaderWorldRenderingPipeline implements WorldRenderingPipelin
     }
 
     private void bindGbufferFramebuffer() {
-        // TODO: For now, skip g-buffer binding until the full shader program compilation is implemented.
-        // The current stub does not compile actual shader programs from the shader pack, so binding
-        // to a custom framebuffer would cause rendering to go to the wrong place with no way to
-        // composite it back properly.
-        //
-        // To enable this functionality, implement:
-        // 1. gbuffer_basic.vsh/fsh compilation
-        // 2. gbuffer_terrain.vsh/fsh compilation  
-        // 3. composite pass with proper shader programs
-        // 4. final pass blitting
-        //
-        // For now, rendering goes directly to the default framebuffer (vanilla behavior).
-        if (true) {
-            // Temporarily disabled - render to default framebuffer
+        // Check if shaders are compiled - only bind if we have working shaders
+        if (!shadersCompiled || shaderLoader == null || shaderLoader.getPrograms().isEmpty()) {
+            // No shaders compiled - render to default framebuffer (vanilla behavior)
             gbufferBound = false;
             return;
         }
         
         ensureFramebufferManagerInitialized();
         ensureFramebufferDimensionsUpToDate();
+        
         Framebuffer framebuffer = getOrCreateGbufferFramebuffer();
         framebuffer.bind();
+        
+        // Set up draw buffers
+        if (gbufferDrawBuffers.length > 0) {
+            int[] glBuffers = convertToGLDrawBuffers(gbufferDrawBuffers);
+            IntBuffer drawBufferBuffer = BufferUtils.createIntBuffer(glBuffers.length);
+            drawBufferBuffer.put(glBuffers);
+            drawBufferBuffer.flip();
+            GL20.glDrawBuffers(drawBufferBuffer);
+        }
+        
+        // Clear the g-buffer
+        GL11.glClear(GL11.GL_COLOR_BUFFER_BIT | GL11.GL_DEPTH_BUFFER_BIT);
+        
         gbufferBound = true;
-        Oculus.LOGGER.info("Binding g-buffers for {}", pack.getName());
+        LOGGER.debug("Bound g-buffer framebuffer for {}", pack.getName());
+    }
+    
+    private int[] convertToGLDrawBuffers(int[] bufferIndices) {
+        int[] glBuffers = new int[bufferIndices.length];
+        for (int i = 0; i < bufferIndices.length; i++) {
+            glBuffers[i] = GL30.GL_COLOR_ATTACHMENT0 + bufferIndices[i];
+        }
+        return glBuffers;
     }
 
     private void ensureFramebufferManagerInitialized() {
@@ -492,48 +564,67 @@ public final class ShaderWorldRenderingPipeline implements WorldRenderingPipelin
             return;
         }
 
-        if (gbufferDrawBuffers.length == 0) {
-            LOGGER.warn("No g-buffer draw buffers configured; skipping composite pass");
-            return;
-        }
-
         Minecraft minecraft = Minecraft.getMinecraft();
         if (minecraft == null) {
+            GL30.glBindFramebuffer(GL30.GL_FRAMEBUFFER, 0);
+            gbufferBound = false;
             return;
         }
-
-        com.github.zsoltmolnarr.oculus.client.render.gl.program.Program program = getPassthroughProgram();
-        if (program == null) {
-            return;
-        }
-
-        RenderTarget colorTarget = framebufferManager.getRenderTarget(gbufferDrawBuffers[0]);
-        int colorTexture = colorTarget.getMainTexture();
 
         int viewportWidth = Math.max(1, minecraft.displayWidth);
         int viewportHeight = Math.max(1, minecraft.displayHeight);
 
+        // Get the color texture from the g-buffer
+        RenderTarget colorTarget = null;
+        int colorTexture = 0;
+        
+        if (gbufferDrawBuffers.length > 0) {
+            colorTarget = framebufferManager.getRenderTarget(gbufferDrawBuffers[0]);
+            if (colorTarget != null) {
+                colorTexture = colorTarget.getMainTexture();
+            }
+        }
+
+        // TODO: Run composite shader passes here if the shader pack defines them
+        // For now, we just blit the g-buffer color to the screen
+
+        // Bind to screen framebuffer
         GL30.glBindFramebuffer(GL30.GL_FRAMEBUFFER, 0);
         GL11.glViewport(0, 0, viewportWidth, viewportHeight);
 
-    GlStateManager.disableDepth();
-    GlStateManager.depthMask(false);
+        // Disable depth testing for fullscreen quad
+        GlStateManager.disableDepth();
+        GlStateManager.depthMask(false);
+        GlStateManager.disableBlend();
 
+        // Bind the g-buffer color texture
         GL13.glActiveTexture(GL13.GL_TEXTURE0);
         GL11.glBindTexture(GL11.GL_TEXTURE_2D, colorTexture);
 
-        program.use();
-        // Set the u_ColorTexture uniform to texture unit 0
-        program.uniform("u_ColorTexture").setInt(0);
+        // Use passthrough program to blit texture to screen
+        com.github.zsoltmolnarr.oculus.client.render.gl.program.Program passthrough = getPassthroughProgram();
+        if (passthrough != null) {
+            passthrough.use();
+            passthrough.uniform("u_ColorTexture").setInt(0);
+        } else {
+            // Fallback: use fixed function pipeline
+            GL20.glUseProgram(0);
+            GlStateManager.enableTexture2D();
+        }
 
+        // Draw fullscreen quad
         drawFullscreenQuad();
 
-        com.github.zsoltmolnarr.oculus.client.render.gl.program.Program.unbind();
+        // Cleanup
+        if (passthrough != null) {
+            com.github.zsoltmolnarr.oculus.client.render.gl.program.Program.unbind();
+        }
         GL11.glBindTexture(GL11.GL_TEXTURE_2D, 0);
-        GL13.glActiveTexture(GL13.GL_TEXTURE0);
 
+        // Restore state
         GlStateManager.enableDepth();
         GlStateManager.depthMask(true);
+        GlStateManager.enableBlend();
 
         gbufferBound = false;
     }
