@@ -1,5 +1,10 @@
 package net.oculus.uniforms;
 
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Paths;
+import java.util.concurrent.atomic.AtomicInteger;
+
 import org.junit.Before;
 import org.junit.Test;
 
@@ -15,6 +20,11 @@ public class CapturedRenderingStateTest {
     @Before
     public void setUp() {
         state = CapturedRenderingState.INSTANCE;
+        state.getEntityIdNotifier().setListener(null);
+        state.getBlockEntityIdNotifier().setListener(null);
+        state.getFogColorNotifier().setListener(null);
+        state.setCurrentEntity(-1);
+        state.setCurrentBlockEntity(-1);
     }
 
     @Test
@@ -35,6 +45,35 @@ public class CapturedRenderingStateTest {
         assertEquals("ModelView Inverse matrix size", 16, state.getModelViewInverse().length);
         assertEquals("Projection Inverse matrix size", 16, state.getProjectionInverse().length);
         assertEquals("ModelViewProjection matrix size", 16, state.getModelViewProjection().length);
+        assertEquals("Normal matrix size", 16, state.getNormalMatrix().length);
+    }
+
+    @Test
+    public void postCameraSetupRefreshesCurrentMatricesWithoutRollingPreviousAgain() throws Exception {
+        String source = new String(Files.readAllBytes(Paths.get(
+            "src/main/java/net/oculus/uniforms/CapturedRenderingState.java")), StandardCharsets.UTF_8);
+
+        assertTrue(source.contains("public void capturePostCameraSetup(float partialTicks)"));
+        assertTrue(source.contains("cameraTracker.updateFromActiveRenderInfo(partialTicks);"));
+        assertTrue(source.contains("refreshCameraState();"));
+        assertTrue(source.contains("captureCurrentMatrices();"));
+
+        int method = source.indexOf("public void capturePostCameraSetup(float partialTicks)");
+        int nextMethod = source.indexOf("/**", method + 1);
+        String body = source.substring(method, nextMethod);
+        assertFalse("Post-camera refresh must not roll previous matrices a second time",
+            body.contains("captureMatrices();"));
+    }
+
+    @Test
+    public void normalMatrixIsInverseTransposeOfCurrentModelView() throws Exception {
+        String source = new String(Files.readAllBytes(Paths.get(
+            "src/main/java/net/oculus/uniforms/CapturedRenderingState.java")), StandardCharsets.UTF_8);
+
+        assertTrue(source.contains("private final float[] normalMatrix = MatrixMath.createIdentity();"));
+        assertTrue(source.contains("public float[] getNormalMatrix()"));
+        assertTrue(source.contains("MatrixMath.invert(gbufferModelView, modelViewInverse);"));
+        assertTrue(source.contains("MatrixMath.transpose(modelViewInverse, normalMatrix);"));
     }
 
     @Test
@@ -62,29 +101,55 @@ public class CapturedRenderingStateTest {
     public void testSetCurrentEntity() {
         state.setCurrentEntity(42);
         assertEquals("Entity ID should be set", 42, state.getCurrentEntity());
-        
+
         state.setCurrentEntity(-1);
         assertEquals("Entity ID should reset to -1", -1, state.getCurrentEntity());
+    }
+
+    @Test
+    public void entityIdNotifierFansOutToAllDynamicUniformBindings() {
+        AtomicInteger first = new AtomicInteger();
+        AtomicInteger second = new AtomicInteger();
+
+        state.getEntityIdNotifier().setListener(first::incrementAndGet);
+        state.getEntityIdNotifier().setListener(second::incrementAndGet);
+        state.setCurrentEntity(42);
+
+        assertEquals(1, first.get());
+        assertEquals(1, second.get());
     }
 
     @Test
     public void testSetCurrentBlockEntity() {
         state.setCurrentBlockEntity(123);
         assertEquals("Block entity ID should be set", 123, state.getCurrentBlockEntity());
-        
+
         state.setCurrentBlockEntity(-1);
         assertEquals("Block entity ID should reset to -1", -1, state.getCurrentBlockEntity());
     }
 
     @Test
+    public void blockEntityIdNotifierFansOutToAllDynamicUniformBindings() {
+        AtomicInteger first = new AtomicInteger();
+        AtomicInteger second = new AtomicInteger();
+
+        state.getBlockEntityIdNotifier().setListener(first::incrementAndGet);
+        state.getBlockEntityIdNotifier().setListener(second::incrementAndGet);
+        state.setCurrentBlockEntity(123);
+
+        assertEquals(1, first.get());
+        assertEquals(1, second.get());
+    }
+
+    @Test
     public void testSetFogColor() {
         state.setFogColor(0.5f, 0.7f, 0.9f);
-        
+
         float[] fogColor = state.getFogColor();
         assertEquals("Fog red component", 0.5f, fogColor[0], 0.001f);
         assertEquals("Fog green component", 0.7f, fogColor[1], 0.001f);
         assertEquals("Fog blue component", 0.9f, fogColor[2], 0.001f);
-        
+
         float[] fogColorVec4 = state.getFogColorVec4();
         assertEquals("Fog vec4 red component", 0.5f, fogColorVec4[0], 0.001f);
         assertEquals("Fog vec4 green component", 0.7f, fogColorVec4[1], 0.001f);
@@ -93,13 +158,27 @@ public class CapturedRenderingStateTest {
     }
 
     @Test
+    public void fogColorNotifierFansOutToAllDynamicUniformBindings() {
+        AtomicInteger first = new AtomicInteger();
+        AtomicInteger second = new AtomicInteger();
+
+        state.setFogColor(0.0f, 0.0f, 0.0f);
+        state.getFogColorNotifier().setListener(first::incrementAndGet);
+        state.getFogColorNotifier().setListener(second::incrementAndGet);
+        state.setFogColor(0.1f, 0.2f, 0.3f);
+
+        assertEquals(1, first.get());
+        assertEquals(1, second.get());
+    }
+
+    @Test
     public void testNearFarPlanes() {
         float nearPlane = state.getNearPlane();
         float farPlane = state.getFarPlane();
-        
+
         assertTrue("Near plane should be positive", nearPlane > 0);
         assertTrue("Far plane should be non-negative", farPlane >= 0);
-        
+
         // Near plane should be less than far plane (unless far is 0, which is valid initially)
         if (farPlane > 0) {
             assertTrue("Near plane should be less than far plane", nearPlane < farPlane);
@@ -150,12 +229,12 @@ public class CapturedRenderingStateTest {
     public void testEntityIdRange() {
         // Test that entity IDs can be set to various values
         int[] testIds = {-1, 0, 1, 100, 1000, Integer.MAX_VALUE};
-        
+
         for (int id : testIds) {
             state.setCurrentEntity(id);
             assertEquals("Entity ID should be set correctly", id, state.getCurrentEntity());
         }
-        
+
         for (int id : testIds) {
             state.setCurrentBlockEntity(id);
             assertEquals("Block entity ID should be set correctly", id, state.getCurrentBlockEntity());
@@ -170,7 +249,7 @@ public class CapturedRenderingStateTest {
         assertEquals(0.0f, black[0], 0.001f);
         assertEquals(0.0f, black[1], 0.001f);
         assertEquals(0.0f, black[2], 0.001f);
-        
+
         state.setFogColor(1.0f, 1.0f, 1.0f);
         float[] white = state.getFogColor();
         assertEquals(1.0f, white[0], 0.001f);

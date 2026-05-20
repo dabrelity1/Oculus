@@ -1,5 +1,7 @@
 package net.oculus.gl.image;
 
+import java.util.Collections;
+import java.util.Set;
 import java.util.function.IntSupplier;
 
 import net.oculus.gl.texture.InternalTextureFormat;
@@ -10,6 +12,10 @@ import net.oculus.gl.texture.InternalTextureFormat;
  */
 public interface ImageHolder {
     boolean hasImage(String name);
+
+    default Set<String> getActiveImageNames() {
+        return Collections.emptySet();
+    }
 
     void addTextureImage(IntSupplier textureId, InternalTextureFormat internalFormat, String name);
 }

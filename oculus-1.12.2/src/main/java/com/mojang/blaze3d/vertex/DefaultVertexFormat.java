@@ -1,7 +1,8 @@
 package com.mojang.blaze3d.vertex;
 
 /**
- * Simplified version of the default vertex elements used by newer Minecraft versions.
+ * Modern-name compatibility constants for the vertex elements Oculus translates to
+ * Forge 1.12 vertex formats.
  */
 public final class DefaultVertexFormat {
     public static final VertexFormatElement ELEMENT_POSITION =

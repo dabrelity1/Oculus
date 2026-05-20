@@ -16,6 +16,8 @@ public final class ShadowUniforms {
     private static final float[] SHADOW_MODEL_VIEW_INVERSE = MatrixMath.createIdentity();
     private static final float[] SHADOW_PROJECTION = MatrixMath.createIdentity();
     private static final float[] SHADOW_PROJECTION_INVERSE = MatrixMath.createIdentity();
+    private static final float[] SHADOW_RENDER_PROJECTION = MatrixMath.createIdentity();
+    private static final float[] SHADOW_RENDER_PROJECTION_INVERSE = MatrixMath.createIdentity();
     private static final float[] ROTATION_MATRIX = MatrixMath.createIdentity();
     private static final float[] TRANSLATION_MATRIX = MatrixMath.createIdentity();
     private static final float[] SNAP_TRANSLATION = MatrixMath.createIdentity();
@@ -56,6 +58,16 @@ public final class ShadowUniforms {
         return SHADOW_PROJECTION_INVERSE;
     }
 
+    public static float[] getShadowRenderProjection() {
+        updateProjectionIfNeeded();
+        return SHADOW_RENDER_PROJECTION;
+    }
+
+    public static float[] getShadowRenderProjectionInverse() {
+        updateProjectionIfNeeded();
+        return SHADOW_RENDER_PROJECTION_INVERSE;
+    }
+
     public static float[] getShadowModelView() {
         updateModelViewIfNeeded();
         return SHADOW_MODEL_VIEW;
@@ -71,13 +83,11 @@ public final class ShadowUniforms {
             return;
         }
 
-        if (shadowFov != null) {
-            createPerspective(shadowFov.floatValue(), SHADOW_PROJECTION);
-        } else {
-            createOrthographic(shadowDistance, SHADOW_PROJECTION);
-        }
-
+        createOrthographic(shadowDistance, SHADOW_PROJECTION);
         MatrixMath.invert(SHADOW_PROJECTION, SHADOW_PROJECTION_INVERSE);
+
+        createRenderProjection(shadowDistance, shadowFov, SHADOW_RENDER_PROJECTION);
+        MatrixMath.invert(SHADOW_RENDER_PROJECTION, SHADOW_RENDER_PROJECTION_INVERSE);
         projectionDirty = false;
     }
 
@@ -88,13 +98,15 @@ public final class ShadowUniforms {
         }
 
         lastModelViewFrame = frame;
-        MatrixMath.setIdentity(SHADOW_MODEL_VIEW);
-        applyTranslation(SHADOW_MODEL_VIEW, 0.0F, 0.0F, -100.0F);
-        applyRotationX(SHADOW_MODEL_VIEW, 90.0F);
-        float skyAngle = toSkyAngle(CelestialUniforms.getShadowAngle());
-        applyRotationZ(SHADOW_MODEL_VIEW, -skyAngle * 360.0F);
-        applyRotationX(SHADOW_MODEL_VIEW, sunPathRotation);
-        snapModelViewToGrid();
+        double[] camera = CapturedRenderingState.INSTANCE.getUnshiftedCameraPosition();
+        createModelView(
+            CelestialUniforms.getShadowAngle(),
+            shadowIntervalSize,
+            sunPathRotation,
+            camera[0],
+            camera[1],
+            camera[2],
+            SHADOW_MODEL_VIEW);
         MatrixMath.invert(SHADOW_MODEL_VIEW, SHADOW_MODEL_VIEW_INVERSE);
     }
 
@@ -102,22 +114,36 @@ public final class ShadowUniforms {
         return shadowAngle < 0.25F ? shadowAngle + 0.75F : shadowAngle - 0.25F;
     }
 
-    private static void snapModelViewToGrid() {
-        float interval = shadowIntervalSize;
-        if (Math.abs(interval) < 1.0e-6F) {
+    static void createModelView(float shadowAngle, float interval, float sunPathRotation,
+            double cameraX, double cameraY, double cameraZ, float[] target) {
+        MatrixMath.setIdentity(target);
+        applyTranslation(target, 0.0F, 0.0F, -100.0F);
+        applyRotationX(target, 90.0F);
+        float skyAngle = toSkyAngle(shadowAngle);
+        applyRotationZ(target, -skyAngle * 360.0F);
+        applyRotationX(target, sunPathRotation);
+        snapModelViewToGrid(target, interval, cameraX, cameraY, cameraZ);
+    }
+
+    private static void snapModelViewToGrid(float[] target, float interval,
+            double cameraX, double cameraY, double cameraZ) {
+        if (!shouldApplyGridSnap(interval)) {
             return;
         }
 
-        double[] camera = CapturedRenderingState.INSTANCE.getUnshiftedCameraPosition();
-        float offsetX = wrapToInterval((float) camera[0], interval);
-        float offsetY = wrapToInterval((float) camera[1], interval);
-        float offsetZ = wrapToInterval((float) camera[2], interval);
+        float offsetX = wrapToInterval((float) cameraX, interval);
+        float offsetY = wrapToInterval((float) cameraY, interval);
+        float offsetZ = wrapToInterval((float) cameraZ, interval);
 
         MatrixTransforms.translation(offsetX, offsetY, offsetZ, SNAP_TRANSLATION);
-        MatrixMath.multiply(SHADOW_MODEL_VIEW, SNAP_TRANSLATION, SHADOW_MODEL_VIEW);
+        MatrixMath.multiply(target, SNAP_TRANSLATION, target);
     }
 
-    private static float wrapToInterval(float value, float interval) {
+    static boolean shouldApplyGridSnap(float interval) {
+        return Math.abs(interval) != 0.0F;
+    }
+
+    static float wrapToInterval(float value, float interval) {
         float offset = value % interval;
         float half = interval * 0.5F;
         return offset - half;
@@ -138,16 +164,23 @@ public final class ShadowUniforms {
         MatrixMath.multiply(matrix, ROTATION_MATRIX, matrix);
     }
 
-    private static void createOrthographic(float halfPlaneLength, float[] target) {
+    static void createOrthographic(float halfPlaneLength, float[] target) {
         MatrixMath.setIdentity(target);
-        float safeHalf = Math.max(Math.abs(halfPlaneLength), 0.0001F);
-        target[0] = 1.0F / safeHalf;
-        target[5] = 1.0F / safeHalf;
+        target[0] = 1.0F / halfPlaneLength;
+        target[5] = 1.0F / halfPlaneLength;
         target[10] = 2.0F / (NEAR - FAR);
         target[14] = -(FAR + NEAR) / (FAR - NEAR);
     }
 
-    private static void createPerspective(float fovDegrees, float[] target) {
+    static void createRenderProjection(float halfPlaneLength, Float fovDegrees, float[] target) {
+        if (fovDegrees != null) {
+            createPerspective(fovDegrees.floatValue(), target);
+        } else {
+            createOrthographic(halfPlaneLength, target);
+        }
+    }
+
+    static void createPerspective(float fovDegrees, float[] target) {
         MatrixMath.setIdentity(target);
         float radians = (float) Math.toRadians(fovDegrees * 0.5F);
         float yScale = (float) (1.0D / Math.tan(radians));

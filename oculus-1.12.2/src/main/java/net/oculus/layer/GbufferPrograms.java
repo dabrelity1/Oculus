@@ -2,6 +2,7 @@ package net.oculus.layer;
 
 import net.oculus.gl.state.StateUpdateNotifiers;
 import net.oculus.pipeline.PipelineManager;
+import net.oculus.pipeline.SpecialCondition;
 import net.oculus.pipeline.WorldRenderingPhase;
 import net.oculus.pipeline.WorldRenderingPipeline;
 
@@ -12,7 +13,6 @@ public final class GbufferPrograms {
     private static boolean entities;
     private static boolean blockEntities;
     private static boolean outlines;
-    private static Runnable phaseChangeListener;
 
     private GbufferPrograms() {
     }
@@ -92,8 +92,20 @@ public final class GbufferPrograms {
     }
 
     public static void runPhaseChangeNotifier() {
-        if (phaseChangeListener != null) {
-            phaseChangeListener.run();
+        StateUpdateNotifiers.notifyPhaseChanged();
+    }
+
+    public static void setupSpecialRenderCondition(SpecialCondition special) {
+        WorldRenderingPipeline pipeline = PipelineManager.INSTANCE.getPipelineNullable();
+        if (pipeline != null) {
+            pipeline.setSpecialCondition(special);
+        }
+    }
+
+    public static void teardownSpecialRenderCondition(SpecialCondition special) {
+        WorldRenderingPipeline pipeline = PipelineManager.INSTANCE.getPipelineNullable();
+        if (pipeline != null) {
+            pipeline.setSpecialCondition(null);
         }
     }
 
@@ -101,7 +113,4 @@ public final class GbufferPrograms {
         // trigger static initialiser
     }
 
-    static {
-        StateUpdateNotifiers.phaseChangeNotifier = listener -> phaseChangeListener = listener;
-    }
 }

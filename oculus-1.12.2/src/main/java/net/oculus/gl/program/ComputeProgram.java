@@ -2,8 +2,9 @@ package net.oculus.gl.program;
 
 import java.nio.IntBuffer;
 
-import net.oculus.Oculus;
 import net.oculus.gl.OculusRenderSystem;
+import net.oculus.pipeline.PipelineManager;
+import net.oculus.pipeline.WorldRenderingPipeline;
 import net.oculus.vendored.joml.Vector2f;
 import net.oculus.vendored.joml.Vector3i;
 import org.lwjgl.BufferUtils;
@@ -15,6 +16,9 @@ import org.lwjgl.opengl.GL43;
  * packs to rely on work group helpers.
  */
 public final class ComputeProgram extends Program {
+    private static final int PRE_DISPATCH_BARRIER = GL42.GL_TEXTURE_FETCH_BARRIER_BIT
+        | GL42.GL_SHADER_IMAGE_ACCESS_BARRIER_BIT;
+
     private final int[] localSize = new int[] {1, 1, 1};
     private Vector3i absoluteWorkGroups;
     private Vector2f relativeWorkGroups;
@@ -71,17 +75,34 @@ public final class ComputeProgram extends Program {
 
     public void dispatch(float width, float height) {
         if (!OculusRenderSystem.supportsCompute()) {
-            Oculus.LOGGER.warn("Attempted to dispatch compute program {}, but this platform does not support compute shaders.", getProgramId());
-            return;
+            throw new IllegalStateException("Compute shaders are not supported, but compute program "
+                + getName() + " attempted to dispatch.");
         }
 
-        OculusRenderSystem.glUseProgram(getProgramId());
-        getUniforms().update();
-        getSamplers().update();
-        getImages().update();
+        try {
+            activate();
 
-        OculusRenderSystem.memoryBarrier(GL42.GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
-        Vector3i workGroups = getWorkGroups(width, height);
-        OculusRenderSystem.dispatchCompute(workGroups);
+            if (!isConcurrentComputeAllowed()) {
+                OculusRenderSystem.memoryBarrier(PRE_DISPATCH_BARRIER);
+            }
+
+            Vector3i workGroups = getWorkGroups(width, height);
+            OculusRenderSystem.dispatchCompute(workGroups);
+        } catch (RuntimeException exception) {
+            Program.cleanupAfterActivationFailure(exception);
+            throw exception;
+        } catch (Error error) {
+            Program.cleanupAfterActivationFailure(error);
+            throw error;
+        }
+    }
+
+    public static void unbind() {
+        Program.clearActiveBindingsAndProgram();
+    }
+
+    private static boolean isConcurrentComputeAllowed() {
+        WorldRenderingPipeline pipeline = PipelineManager.INSTANCE.getPipelineNullable();
+        return pipeline != null && pipeline.allowConcurrentCompute();
     }
 }

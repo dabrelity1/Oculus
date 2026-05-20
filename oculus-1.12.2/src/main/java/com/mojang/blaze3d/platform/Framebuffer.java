@@ -1,9 +1,9 @@
 package com.mojang.blaze3d.platform;
 
 /**
- * Minimal stub of Mojang's {@code Framebuffer}. The 1.12.2 backport only needs the
- * type to exist so the translated RenderSystem API can compile; no behaviour is
- * implemented yet.
+ * Compatibility shell for copied modern-name code that still mentions Mojang's
+ * {@code Framebuffer}. Active 1.12 runtime framebuffer work is owned by Minecraft's
+ * framebuffer class and the net.oculus framebuffer packages, not by this shell.
  */
 public class Framebuffer {
     private int width;

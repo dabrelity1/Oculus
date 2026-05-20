@@ -1,6 +1,5 @@
 package net.oculus.gui;
 
-import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
@@ -31,6 +30,7 @@ public class ShaderPackSelectionList extends GuiSlot {
     private final Minecraft minecraft;
     private final List<Entry> entries = new ArrayList<>();
     private final TopButtonRowEntry topButtonRow;
+    private ShadowDistanceEntry shadowDistanceEntry;
 
     private ShaderPackEntry appliedEntry;
     private String appliedPackName;
@@ -43,7 +43,7 @@ public class ShaderPackSelectionList extends GuiSlot {
         super(minecraft, width, height, top, bottom, ROW_HEIGHT);
         this.screen = screen;
         this.minecraft = minecraft;
-    this.topButtonRow = new TopButtonRowEntry();
+        this.topButtonRow = new TopButtonRowEntry();
         this.setShowSelectionBox(false);
         this.slotWidth = Math.min(308, width - 50);
         int centeredLeft = (width - this.slotWidth) / 2;
@@ -79,12 +79,15 @@ public class ShaderPackSelectionList extends GuiSlot {
         entries.clear();
         selectedIndex = -1;
         entries.add(topButtonRow);
+        entries.add(new ColorSpaceEntry());
+        this.shadowDistanceEntry = new ShadowDistanceEntry();
+        entries.add(this.shadowDistanceEntry);
 
         Collection<String> names;
         try {
             names = ShaderpackDirectoryManager.findShaderPacks();
-        } catch (IOException e) {
-            Oculus.LOGGER.error("Error reading shaderpacks directory", e);
+        } catch (Throwable throwable) {
+            Oculus.LOGGER.error("Error reading shaderpacks directory", throwable);
             addErrorMessage();
             return;
         }
@@ -189,7 +192,9 @@ public class ShaderPackSelectionList extends GuiSlot {
     }
 
     public void mouseReleased(int mouseX, int mouseY, int button) {
-        // No special release handling required for selection entries.
+        if (this.shadowDistanceEntry != null) {
+            this.shadowDistanceEntry.mouseReleased();
+        }
     }
 
     private boolean isWithinBounds(int mouseX, int mouseY) {
@@ -295,6 +300,9 @@ public class ShaderPackSelectionList extends GuiSlot {
 
             Entry entry = entries.get(index);
             if (entry instanceof ShaderPackEntry) {
+                if (!topButtonRow.shadersEnabled) {
+                    topButtonRow.setShadersEnabled(true);
+                }
                 selectEntry((ShaderPackEntry) entry);
                 screen.onShaderPackSelected(((ShaderPackEntry) entry).packName);
                 return;
@@ -374,6 +382,134 @@ public class ShaderPackSelectionList extends GuiSlot {
         }
     }
 
+    private class ColorSpaceEntry implements Entry {
+        private int lastButtonX;
+        private int lastButtonY;
+        private int lastButtonWidth;
+
+        @Override
+        public void draw(int slotIndex, int xPos, int yPos, int slotHeight, int mouseX, int mouseY, float partialTicks) {
+            FontRenderer font = minecraft.fontRenderer;
+            int buttonX = xPos + BUTTON_MARGIN;
+            int buttonY = yPos + BUTTON_MARGIN;
+            int buttonWidth = Math.max(1, contentWidth() - BUTTON_MARGIN * 2);
+
+            this.lastButtonX = buttonX;
+            this.lastButtonY = buttonY;
+            this.lastButtonWidth = buttonWidth;
+
+            boolean disabled = !screen.isColorSpaceControlAvailable();
+            boolean hovered = !disabled && isWithin(mouseX, mouseY, buttonX, buttonY, buttonWidth, BUTTON_HEIGHT);
+
+            GuiUtil.bindIrisWidgetsTexture();
+            GuiUtil.drawButton(buttonX, buttonY, buttonWidth, BUTTON_HEIGHT, hovered, disabled);
+
+            String label = GuiUtil.shortenText(font, screen.getColorSpaceButtonLabel(), buttonWidth - 8);
+            int textX = buttonX + (buttonWidth - font.getStringWidth(label)) / 2;
+            int textY = buttonY + (BUTTON_HEIGHT - font.FONT_HEIGHT) / 2;
+            font.drawStringWithShadow(label, textX, textY, disabled ? 0xA2A2A2 : 0xFFFFFF);
+
+            if (hovered) {
+                final String tooltip = screen.getColorSpaceTooltip();
+                final int tooltipX = mouseX - 8 - font.getStringWidth(tooltip);
+                final int tooltipY = mouseY - 16;
+                ShaderPackScreen.TOP_LAYER_RENDER_QUEUE.add(() -> GuiUtil.drawTextPanel(font, tooltip, tooltipX, tooltipY));
+            }
+        }
+
+        @Override
+        public void click(int slotIndex, int mouseX, int mouseY, boolean isDoubleClick) {
+            if (!screen.isColorSpaceControlAvailable()) {
+                return;
+            }
+
+            if (isWithin(mouseX, mouseY, lastButtonX, lastButtonY, lastButtonWidth, BUTTON_HEIGHT)) {
+                GuiUtil.playButtonClickSound();
+                screen.cycleColorSpace();
+            }
+        }
+
+        private boolean isWithin(int mouseX, int mouseY, int x, int y, int w, int h) {
+            return mouseX >= x && mouseX <= x + w && mouseY >= y && mouseY <= y + h;
+        }
+    }
+
+    private class ShadowDistanceEntry implements Entry {
+        private static final int SLIDER_KNOB_WIDTH = 6;
+
+        private int lastSliderX;
+        private int lastSliderY;
+        private int lastSliderWidth;
+        private boolean dragging;
+
+        @Override
+        public void draw(int slotIndex, int xPos, int yPos, int slotHeight, int mouseX, int mouseY, float partialTicks) {
+            FontRenderer font = minecraft.fontRenderer;
+            int buttonX = xPos + BUTTON_MARGIN;
+            int buttonY = yPos + BUTTON_MARGIN;
+            int buttonWidth = Math.max(1, contentWidth() - BUTTON_MARGIN * 2);
+
+            this.lastSliderX = buttonX + 4;
+            this.lastSliderY = buttonY + 2;
+            this.lastSliderWidth = Math.max(1, buttonWidth - 8);
+
+            boolean disabled = !screen.isShadowDistanceControlAvailable();
+            boolean rowHovered = isWithin(mouseX, mouseY, buttonX, buttonY, buttonWidth, BUTTON_HEIGHT);
+            boolean hovered = !disabled && rowHovered;
+            if (this.dragging && disabled) {
+                this.dragging = false;
+            } else if (this.dragging) {
+                updateFromMouse(mouseX);
+            }
+
+            GuiUtil.bindIrisWidgetsTexture();
+            GuiUtil.drawButton(buttonX, buttonY, buttonWidth, BUTTON_HEIGHT, hovered, disabled);
+            GuiUtil.drawButton(this.lastSliderX, this.lastSliderY, this.lastSliderWidth, BUTTON_HEIGHT - 4, false, true);
+
+            int knobTravel = Math.max(0, this.lastSliderWidth - SLIDER_KNOB_WIDTH);
+            int knobX = this.lastSliderX + Math.round(screen.getShadowDistanceSliderFraction() * knobTravel);
+            GuiUtil.drawButton(knobX, buttonY + 4, SLIDER_KNOB_WIDTH, BUTTON_HEIGHT - 8, hovered, disabled);
+
+            String label = GuiUtil.shortenText(font, screen.getShadowDistanceButtonLabel(), buttonWidth - 12);
+            int textX = buttonX + (buttonWidth - font.getStringWidth(label)) / 2;
+            int textY = buttonY + (BUTTON_HEIGHT - font.FONT_HEIGHT) / 2;
+            font.drawStringWithShadow(label, textX, textY, disabled ? 0xA2A2A2 : 0xFFFFFF);
+
+            if (rowHovered) {
+                final String tooltip = screen.getShadowDistanceTooltip();
+                final int tooltipX = mouseX - 8 - font.getStringWidth(tooltip);
+                final int tooltipY = mouseY - 16;
+                ShaderPackScreen.TOP_LAYER_RENDER_QUEUE.add(() -> GuiUtil.drawTextPanel(font, tooltip, tooltipX, tooltipY));
+            }
+        }
+
+        @Override
+        public void click(int slotIndex, int mouseX, int mouseY, boolean isDoubleClick) {
+            if (!screen.isShadowDistanceControlAvailable()) {
+                return;
+            }
+
+            if (isWithin(mouseX, mouseY, this.lastSliderX, this.lastSliderY, this.lastSliderWidth, BUTTON_HEIGHT - 4)) {
+                GuiUtil.playButtonClickSound();
+                this.dragging = true;
+                updateFromMouse(mouseX);
+            }
+        }
+
+        private void mouseReleased() {
+            this.dragging = false;
+        }
+
+        private void updateFromMouse(int mouseX) {
+            float fraction = (mouseX - this.lastSliderX) / (float) Math.max(1, this.lastSliderWidth);
+            screen.setShadowDistanceFromSlider(fraction);
+        }
+
+        private boolean isWithin(int mouseX, int mouseY, int x, int y, int w, int h) {
+            return mouseX >= x && mouseX <= x + w && mouseY >= y && mouseY <= y + h;
+        }
+    }
+
     public class TopButtonRowEntry implements Entry {
         private boolean refreshHovered;
 
@@ -386,7 +522,7 @@ public class ShaderPackSelectionList extends GuiSlot {
         public boolean allowEnableShadersButton = false;
         public boolean shadersEnabled = false;
 
-    private TopButtonRowEntry() {
+        private TopButtonRowEntry() {
         }
 
         @Override

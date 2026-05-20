@@ -3,11 +3,14 @@ package net.oculus.uniforms;
 import net.minecraft.client.Minecraft;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.player.EntityPlayer;
+import net.minecraft.util.ResourceLocation;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.MathHelper;
 import net.minecraft.util.math.Vec3d;
+import net.minecraft.world.DimensionType;
 import net.minecraft.world.EnumSkyBlock;
 import net.minecraft.world.World;
+import net.minecraft.world.WorldProvider;
 import net.minecraft.world.biome.Biome;
 import net.minecraftforge.common.BiomeDictionary;
 import net.oculus.uniforms.transforms.SmoothedFloat;
@@ -17,7 +20,6 @@ import net.oculus.uniforms.transforms.SmoothedFloat;
  * (BSL, Complementary, AstralEX, etc.).
  */
 public final class CompatibilityUniforms {
-    private static final Minecraft MC = Minecraft.getMinecraft();
     private static final FrameUpdateNotifier UPDATE_NOTIFIER = new FrameUpdateNotifier();
 
     private static Biome cachedBiome;
@@ -45,7 +47,7 @@ public final class CompatibilityUniforms {
     private static final SmoothedFloat IN_SWAMP = new SmoothedFloat(5f, 5f,
         CompatibilityUniforms::computeInSwamp, UPDATE_NOTIFIER);
     private static final SmoothedFloat IS_PRECIP_RAIN = new SmoothedFloat(6f, 6f,
-        () -> (getRawPrecipitation() == 1 && getCameraY() < 96f) ? 1f : 0f, UPDATE_NOTIFIER);
+        () -> computeIsPrecipitationRain(getRawPrecipitation(), getCameraY()), UPDATE_NOTIFIER);
     private static final SmoothedFloat TOUCH_MY_BODY = new SmoothedFloat(0f, 0.1f,
         CompatibilityUniforms::getHurtFactor, UPDATE_NOTIFIER);
     private static final SmoothedFloat SNEAK_SMOOTH = new SmoothedFloat(2f, 0.9f,
@@ -131,10 +133,7 @@ public final class CompatibilityUniforms {
     public static float getVelocity() {
         double[] current = CapturedRenderingState.INSTANCE.getCameraPosition();
         double[] previous = CapturedRenderingState.INSTANCE.getPreviousCameraPosition();
-        double dx = current[0] - previous[0];
-        double dy = current[1] - previous[1];
-        double dz = current[2] - previous[2];
-        return (float) Math.sqrt(dx * dx + dy * dy + dz * dz);
+        return computeVelocity(current[0], current[1], current[2], previous[0], previous[1], previous[2]);
     }
 
     public static float getStarter() {
@@ -210,7 +209,7 @@ public final class CompatibilityUniforms {
     }
 
     public static float getInNetherWastes() {
-        return 0f;
+        return isNetherWastesBiome(cachedBiome) ? 1f : 0f;
     }
 
     public static float getInSoulValley() {
@@ -226,8 +225,7 @@ public final class CompatibilityUniforms {
     }
 
     public static float getEffectStrength() {
-        float smoothedSpeed = SPEED_SMOOTH.getAsFloat();
-        return (float) (1.0 - Math.exp(-smoothedSpeed * 0.003906f));
+        return computeEffectStrength(SPEED_SMOOTH.getAsFloat());
     }
 
     private static float getVelocityPerFrameTime() {
@@ -245,10 +243,7 @@ public final class CompatibilityUniforms {
             return 0f;
         }
 
-    if (camera.getPositionEyes(1.0f).y < 5.0) {
-            return 1.0f - getEyeSkyBrightness() / 240f;
-        }
-        return 0f;
+        return computeEyeInCaveValue(camera.getPositionEyes(1.0f).y, getEyeSkyBrightness());
     }
 
     private static float getEyeBrightnessM() {
@@ -272,17 +267,17 @@ public final class CompatibilityUniforms {
     }
 
     private static float getBurnFactor() {
-        EntityPlayer player = MC.player;
+        EntityPlayer player = getPlayer();
         return player != null && player.isBurning() ? 1f : 0f;
     }
 
     private static float getSneakFactor() {
-        EntityPlayer player = MC.player;
+        EntityPlayer player = getPlayer();
         return player != null && player.isSneaking() ? 1f : 0f;
     }
 
     private static float getHurtFactor() {
-        EntityPlayer player = MC.player;
+        EntityPlayer player = getPlayer();
         if (player == null) {
             return 0f;
         }
@@ -292,11 +287,7 @@ public final class CompatibilityUniforms {
     private static float getMovingFlag() {
         double[] curr = CapturedRenderingState.INSTANCE.getCameraPosition();
         double[] prev = CapturedRenderingState.INSTANCE.getPreviousCameraPosition();
-        double dx = Math.abs(curr[0] - prev[0]);
-        double dy = Math.abs(curr[1] - prev[1]);
-        double dz = Math.abs(curr[2] - prev[2]);
-        double sum = dx + dy + dz;
-        return (sum > 0.0 && sum < 1.0) ? 1f : 0f;
+        return computeMovingFlag(curr[0], curr[1], curr[2], prev[0], prev[1], prev[2]);
     }
 
     private static SmoothedFloat createStarter() {
@@ -316,9 +307,60 @@ public final class CompatibilityUniforms {
         return BiomeDictionary.hasType(cachedBiome, BiomeDictionary.Type.SWAMP) ? 1f : 0f;
     }
 
-    private static float getCameraY() {
-        Entity camera = getCamera();
-        return camera != null ? (float) camera.posY : 0f;
+    static boolean isNetherWastesBiome(Biome biome) {
+        return biome != null && isNetherWastesBiomeName(Biome.REGISTRY.getNameForObject(biome));
+    }
+
+    static boolean isNetherWastesBiomeName(ResourceLocation name) {
+        return name != null && "minecraft".equals(name.getNamespace()) && "hell".equals(name.getPath());
+    }
+
+    static float computeEyeInCaveValue(double eyeY, float eyeSkyBrightness) {
+        if (eyeY < 5.0) {
+            return 1.0f - eyeSkyBrightness / 240f;
+        }
+        return 0f;
+    }
+
+    static float computeVelocity(double currentX, double currentY, double currentZ,
+                                 double previousX, double previousY, double previousZ) {
+        float dx = (float) (currentX - previousX);
+        float dy = (float) (currentY - previousY);
+        float dz = (float) (currentZ - previousZ);
+        return (float) Math.sqrt(dx * dx + dy * dy + dz * dz);
+    }
+
+    static float computeMovementDeltaSum(double currentX, double currentY, double currentZ,
+                                         double previousX, double previousY, double previousZ) {
+        float dx = (float) (currentX - previousX);
+        float dy = (float) (currentY - previousY);
+        float dz = (float) (currentZ - previousZ);
+        return Math.abs(dx) + Math.abs(dy) + Math.abs(dz);
+    }
+
+    static float computeMovingFlag(double currentX, double currentY, double currentZ,
+                                   double previousX, double previousY, double previousZ) {
+        float sum = computeMovementDeltaSum(currentX, currentY, currentZ, previousX, previousY, previousZ);
+        return (sum > 0.0f && sum < 1.0f) ? 1f : 0f;
+    }
+
+    static float computeEffectStrength(float smoothedSpeed) {
+        return (float) (1.0 - Math.exp(-smoothedSpeed * 0.003906f));
+    }
+
+    static float legacyPrecipitation(boolean enableSnow, boolean canRain) {
+        if (enableSnow) {
+            return 2f;
+        }
+        return canRain ? 1f : 0f;
+    }
+
+    static float computeIsPrecipitationRain(float rawPrecipitation, float cameraY) {
+        return rawPrecipitation == 1f && cameraY < 96f ? 1f : 0f;
+    }
+
+    static float getCameraY() {
+        return (float) CapturedRenderingState.INSTANCE.getCameraPosition()[1];
     }
 
     private static float getAdjustedTime() {
@@ -339,7 +381,30 @@ public final class CompatibilityUniforms {
             return 0;
         }
         long time = world.getWorldTime();
-        return (int) (time % 24000L);
+        return getWorldDayTime(world.provider, time);
+    }
+
+    static int getWorldDayTime(WorldProvider provider, long timeOfDay) {
+        DimensionType dimensionType = getDimensionType(provider);
+        if (dimensionType == DimensionType.NETHER) {
+            return 18000;
+        }
+        if (dimensionType == DimensionType.THE_END) {
+            return 6000;
+        }
+        return (int) (timeOfDay % 24000L);
+    }
+
+    private static DimensionType getDimensionType(WorldProvider provider) {
+        if (provider == null) {
+            return null;
+        }
+
+        try {
+            return provider.getDimensionType();
+        } catch (RuntimeException e) {
+            return null;
+        }
     }
 
     private static float clamp01(double value) {
@@ -351,11 +416,7 @@ public final class CompatibilityUniforms {
             return 0f;
         }
 
-        if (cachedBiome.getEnableSnow()) {
-            return 2f;
-        }
-
-        return cachedBiome.canRain() ? 1f : 0f;
+        return legacyPrecipitation(cachedBiome.getEnableSnow(), cachedBiome.canRain());
     }
 
     private static void updateBiomeCache() {
@@ -373,10 +434,21 @@ public final class CompatibilityUniforms {
     }
 
     private static World getWorld() {
-        return MC.world;
+        Minecraft minecraft = getMinecraft();
+        return minecraft != null ? minecraft.world : null;
     }
 
     private static Entity getCamera() {
-        return MC.getRenderViewEntity();
+        Minecraft minecraft = getMinecraft();
+        return minecraft != null ? minecraft.getRenderViewEntity() : null;
+    }
+
+    private static EntityPlayer getPlayer() {
+        Minecraft minecraft = getMinecraft();
+        return minecraft != null ? minecraft.player : null;
+    }
+
+    private static Minecraft getMinecraft() {
+        return Minecraft.getMinecraft();
     }
 }

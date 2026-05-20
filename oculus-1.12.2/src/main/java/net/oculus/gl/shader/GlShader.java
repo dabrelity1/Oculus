@@ -25,20 +25,25 @@ public class GlShader extends GlResource {
         this.name = name;
         this.type = type;
 
-    OculusRenderSystem.glShaderSource(getGlId(), source);
-        OculusRenderSystem.glCompileShader(getGlId());
+        try {
+            OculusRenderSystem.glShaderSource(getGlId(), source);
+            OculusRenderSystem.glCompileShader(getGlId());
 
-        GLDebug.nameObject(GL_DEBUG_SHADER, getGlId(), name);
+            GLDebug.nameObject(GL_DEBUG_SHADER, getGlId(), name);
 
-        int logLength = OculusRenderSystem.glGetShaderi(getGlId(), GL20.GL_INFO_LOG_LENGTH);
-        String log = OculusRenderSystem.glGetShaderInfoLog(getGlId(), logLength);
-        if (!log.isEmpty()) {
-            LOGGER.warn("Shader compilation log for {}: {}", name, log);
-        }
+            int logLength = OculusRenderSystem.glGetShaderi(getGlId(), GL20.GL_INFO_LOG_LENGTH);
+            String log = OculusRenderSystem.glGetShaderInfoLog(getGlId(), logLength);
+            if (!log.isEmpty()) {
+                LOGGER.warn("Shader compilation log for {}: {}", name, log);
+            }
 
-        int status = OculusRenderSystem.glGetShaderi(getGlId(), GL20.GL_COMPILE_STATUS);
-        if (status != GL11.GL_TRUE) {
-            throw new ProgramLoadException("Failed to compile shader " + name + " (" + type + ")\n" + log);
+            int status = OculusRenderSystem.glGetShaderi(getGlId(), GL20.GL_COMPILE_STATUS);
+            if (status != GL11.GL_TRUE) {
+                throw new ProgramLoadException("Failed to compile shader " + name + " (" + type + ")\n" + log);
+            }
+        } catch (RuntimeException | Error exception) {
+            closeFailedShader(exception);
+            throw exception;
         }
     }
 
@@ -57,5 +62,14 @@ public class GlShader extends GlResource {
     @Override
     protected void destroyInternal() {
         OculusRenderSystem.glDeleteShader(getGlId());
+    }
+
+    private void closeFailedShader(Throwable failure) {
+        try {
+            destroy();
+        } catch (RuntimeException | Error cleanupFailure) {
+            failure.addSuppressed(cleanupFailure);
+            LOGGER.debug("Failed to delete shader {} after construction failure", name, cleanupFailure);
+        }
     }
 }

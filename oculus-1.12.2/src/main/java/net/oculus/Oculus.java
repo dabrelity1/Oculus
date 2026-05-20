@@ -15,10 +15,9 @@ import net.oculus.bridge.OculusRelictiumBridge;
 import net.oculus.client.OculusClientEvents;
 import net.oculus.client.OculusKeyBindings;
 import net.oculus.config.OculusConfig;
+import net.oculus.texture.format.TextureFormatLoader;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import org.spongepowered.asm.launch.MixinBootstrap;
-import org.spongepowered.asm.mixin.Mixins;
 
 @Mod(modid = Oculus.MOD_ID, dependencies = "required-after:vintagium")
 public final class Oculus {
@@ -34,12 +33,6 @@ public final class Oculus {
     public void onConstruction(FMLConstructionEvent event) {
         if (FMLCommonHandler.instance().getSide().isClient()) {
             initializeConfig();
-            LOGGER.info("Oculus construction: Initializing Mixins");
-            MixinBootstrap.init();
-            final String configs = System.getProperty("mixin.configs");
-            LOGGER.info("mixin.configs JVM property: {}", configs);
-            Mixins.addConfiguration("oculus.mixins.json");
-            LOGGER.info("Requested oculus.mixins.json configuration from Oculus constructor");
         }
     }
 
@@ -48,6 +41,7 @@ public final class Oculus {
         if (event.getSide() == Side.CLIENT) {
             initializeConfig();
             ensureShaderpacksFolderExists(event.getModConfigurationDirectory());
+            TextureFormatLoader.registerReloadListener();
             OculusKeyBindings.register();
             MinecraftForge.EVENT_BUS.register(new OculusClientEvents());
         }
@@ -76,7 +70,7 @@ public final class Oculus {
         }
 
         try {
-            config.load();
+            config.initialize();
         } catch (IOException exception) {
             LOGGER.warn("Failed to load Oculus configuration from {}", configPath, exception);
         }

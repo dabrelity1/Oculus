@@ -1,8 +1,7 @@
 package com.mojang.blaze3d.vertex;
 
 /**
- * Minimal stub of Minecraft's VertexFormatElement used by the 1.16.5 Oculus pipeline.
- * Provides just enough structure for the legacy 1.12.2 port to compile.
+ * Modern-name compatibility element used by the Oculus terrain vertex-format bridge.
  */
 public class VertexFormatElement {
     private final int index;

@@ -12,6 +12,8 @@ import net.minecraft.util.text.ITextComponent;
 import net.minecraft.util.text.Style;
 import net.minecraft.util.text.TextComponentString;
 import net.minecraft.util.text.TextComponentTranslation;
+import net.oculus.shaderpack.ShaderPack;
+import net.oculus.shaderpack.ShaderPackLanguageLookup;
 
 /**
  * Centralised helpers for GUI rendering and interactions, translated for 1.12.2.
@@ -101,6 +103,28 @@ public final class GuiUtil {
         }
 
         return defaultText.createCopy();
+    }
+
+    public static ITextComponent translateShaderPackOrDefault(ShaderPack pack, ITextComponent defaultText, String translationKey, Object... format) {
+        if (I18n.hasKey(translationKey)) {
+            return new TextComponentTranslation(translationKey, format);
+        }
+
+        String shaderPackTranslation = ShaderPackLanguageLookup.lookup(pack, translationKey);
+        if (shaderPackTranslation != null) {
+            return new TextComponentString(ShaderPackLanguageLookup.formatLenient(shaderPackTranslation, format));
+        }
+
+        return defaultText.createCopy();
+    }
+
+    public static ITextComponent translateShaderPack(ShaderPack pack, String translationKey, Object... format) {
+        String shaderPackTranslation = ShaderPackLanguageLookup.lookup(pack, translationKey);
+        if (shaderPackTranslation == null) {
+            return null;
+        }
+
+        return new TextComponentString(ShaderPackLanguageLookup.formatLenient(shaderPackTranslation, format));
     }
 
     public static void playButtonClickSound() {

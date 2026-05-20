@@ -22,28 +22,34 @@ public final class OculusTerrainVertexType implements ChunkVertexType {
     public static final int STRIDE = 52;
 
     // Mirrors the 52-byte layout written by OculusTerrainVertexBufferWriterNio.
-    private static final GlVertexFormat<ChunkMeshAttribute> FORMAT = GlVertexFormat
-        .builder(ChunkMeshAttribute.class, STRIDE)
-        .addElement(ChunkMeshAttribute.POSITION, 0, GlVertexAttributeFormat.FLOAT, 3, false)
-        .addElement(ChunkMeshAttribute.COLOR, 12, GlVertexAttributeFormat.UNSIGNED_BYTE, 4, true)
-        .addElement(ChunkMeshAttribute.TEXTURE, 16, GlVertexAttributeFormat.FLOAT, 2, false)
-        .addElement(ChunkMeshAttribute.LIGHT, 24, GlVertexAttributeFormat.UNSIGNED_SHORT, 2, false)
-        .addElement(OculusChunkMeshAttributes.NORMAL, 28, OculusGlVertexAttributeFormats.BYTE, 4, true)
-        .addElement(OculusChunkMeshAttributes.MATERIAL, 32, GlVertexAttributeFormat.UNSIGNED_SHORT, 2, false)
-        .addElement(OculusChunkMeshAttributes.MID_UV, 36, GlVertexAttributeFormat.FLOAT, 2, false)
-        .addElement(OculusChunkMeshAttributes.TANGENT, 44, OculusGlVertexAttributeFormats.BYTE, 4, true)
-        .addElement(OculusChunkMeshAttributes.MID_BLOCK, 48, GlVertexAttributeFormat.UNSIGNED_BYTE, 3, false)
-        .build();
+    private static final GlVertexFormat<ChunkMeshAttribute> FORMAT = createFormat();
 
-    private static final float MODEL_SCALE = 1.0f;
-    private static final float TEXTURE_SCALE = 1.0f;
+    public static final float MODEL_SCALE = 1.0f;
+    public static final float TEXTURE_SCALE = 1.0f;
 
     private OculusTerrainVertexType() {
     }
 
+    private static GlVertexFormat<ChunkMeshAttribute> createFormat() {
+        OculusChunkMeshAttributes.initialize();
+
+        return GlVertexFormat
+            .builder(ChunkMeshAttribute.class, STRIDE)
+            .addElement(ChunkMeshAttribute.POSITION, 0, GlVertexAttributeFormat.FLOAT, 3, false)
+            .addElement(ChunkMeshAttribute.COLOR, 12, GlVertexAttributeFormat.UNSIGNED_BYTE, 4, true)
+            .addElement(ChunkMeshAttribute.TEXTURE, 16, GlVertexAttributeFormat.FLOAT, 2, false)
+            .addElement(ChunkMeshAttribute.LIGHT, 24, GlVertexAttributeFormat.UNSIGNED_SHORT, 2, false)
+            .addElement(OculusChunkMeshAttributes.NORMAL, 28, OculusGlVertexAttributeFormats.BYTE, 4, true)
+            .addElement(OculusChunkMeshAttributes.MATERIAL, 32, OculusGlVertexAttributeFormats.SHORT, 2, false)
+            .addElement(OculusChunkMeshAttributes.MID_UV, 36, GlVertexAttributeFormat.FLOAT, 2, false)
+            .addElement(OculusChunkMeshAttributes.TANGENT, 44, OculusGlVertexAttributeFormats.BYTE, 4, true)
+            .addElement(OculusChunkMeshAttributes.MID_BLOCK, 48, OculusGlVertexAttributeFormats.BYTE, 4, false)
+            .build();
+    }
+
     @Override
     public ModelVertexSink createFallbackWriter(BufferBuilder consumer) {
-        throw new UnsupportedOperationException("Fallback BufferBuilder path is not implemented yet");
+        return new OculusTerrainVertexWriterFallback(consumer);
     }
 
     @Override

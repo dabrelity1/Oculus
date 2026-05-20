@@ -33,7 +33,7 @@ public final class OculusTerrainVertexBufferWriterNio extends VertexBufferWriter
     private static final int OFFSET_MID_V = 40;
     private static final int OFFSET_TANGENT = 44;
     private static final int OFFSET_MID_BLOCK = 48;
-    private static final int OFFSET_FINAL_PADDING = 51;
+    private static final int OFFSET_BLOCK_EMISSION = 51;
 
     private final OculusQuadViewTerrain.NioView quadView = new OculusQuadViewTerrain.NioView();
     private final Vector3f normal = new Vector3f();
@@ -69,12 +69,13 @@ public final class OculusTerrainVertexBufferWriterNio extends VertexBufferWriter
                 light,
                 ctx.blockId,
                 ctx.renderType,
-                OculusExtendedDataHelper.computeMidBlock(x, y, z, ctx.localPosX, ctx.localPosY, ctx.localPosZ)
+                OculusExtendedDataHelper.computeMidBlock(x, y, z, ctx.localPosX, ctx.localPosY, ctx.localPosZ),
+                ctx.blockEmission
         );
     }
 
     private void writeQuadInternal(float x, float y, float z, int color, float u, float v, int light,
-                                   short materialId, short renderType, int packedMidBlock) {
+                                   short materialId, short renderType, int packedMidBlock, byte blockEmission) {
         ByteBuffer buffer = this.byteBuffer;
         int offset = this.writeOffset;
 
@@ -95,7 +96,7 @@ public final class OculusTerrainVertexBufferWriterNio extends VertexBufferWriter
         buffer.putShort(offset + OFFSET_MATERIAL_ID, materialId);
         buffer.putShort(offset + OFFSET_RENDER_TYPE, renderType);
 
-        writeMidBlock(buffer, offset, packedMidBlock);
+        writeMidBlock(buffer, offset, packedMidBlock, blockEmission);
 
         if (this.vertexCount == 4) {
             this.vertexCount = 0;
@@ -121,11 +122,11 @@ public final class OculusTerrainVertexBufferWriterNio extends VertexBufferWriter
         this.advance();
     }
 
-    private static void writeMidBlock(ByteBuffer buffer, int offset, int packedMidBlock) {
+    private static void writeMidBlock(ByteBuffer buffer, int offset, int packedMidBlock, byte blockEmission) {
         buffer.put(offset + OFFSET_MID_BLOCK, (byte) (packedMidBlock & 0xFF));
         buffer.put(offset + OFFSET_MID_BLOCK + 1, (byte) ((packedMidBlock >> 8) & 0xFF));
         buffer.put(offset + OFFSET_MID_BLOCK + 2, (byte) ((packedMidBlock >> 16) & 0xFF));
-        buffer.put(offset + OFFSET_FINAL_PADDING, (byte) 0);
+        buffer.put(offset + OFFSET_BLOCK_EMISSION, blockEmission);
     }
 
     private static void propagateFloat(ByteBuffer buffer, int offset, float value, int relativeOffset) {

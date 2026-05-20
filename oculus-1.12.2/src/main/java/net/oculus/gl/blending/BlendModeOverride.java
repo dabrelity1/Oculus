@@ -2,11 +2,6 @@ package net.oculus.gl.blending;
 
 import java.util.Objects;
 
-/**
- * Carries blend override requests parsed from shaders.properties. The actual
- * GL plumbing will be hooked up once the deferred renderer is active, but
- * retaining this metadata ensures parity with the upstream Iris pipeline.
- */
 public final class BlendModeOverride {
 	public static final BlendModeOverride DEFAULT = new BlendModeOverride(null, false);
 	public static final BlendModeOverride OFF = new BlendModeOverride(null, true);
@@ -34,5 +29,20 @@ public final class BlendModeOverride {
 
 	public BlendMode getBlendMode() {
 		return blendMode;
+	}
+
+	public void apply() {
+		if (disabled) {
+			BlendModeStorage.overrideBlend(null);
+			return;
+		}
+
+		if (blendMode != null) {
+			BlendModeStorage.overrideBlend(blendMode);
+		}
+	}
+
+	public static void restore() {
+		BlendModeStorage.restoreBlend();
 	}
 }

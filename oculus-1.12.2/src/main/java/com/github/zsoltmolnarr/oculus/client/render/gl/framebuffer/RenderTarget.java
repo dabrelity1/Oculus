@@ -2,18 +2,18 @@ package com.github.zsoltmolnarr.oculus.client.render.gl.framebuffer;
 
 import java.nio.ByteBuffer;
 
+import net.oculus.gl.OculusRenderSystem;
 import net.oculus.gl.texture.InternalTextureFormat;
 import net.oculus.gl.texture.PixelFormat;
 import net.oculus.gl.texture.PixelType;
+import net.oculus.texture.TextureLifecycleTracker;
 import net.oculus.vendored.joml.Vector2i;
 import org.lwjgl.opengl.GL11;
 import org.lwjgl.opengl.GL12;
-import org.lwjgl.opengl.GL13;
 
 /**
  * Port of the Iris {@code RenderTarget} helper. Each target owns a pair of textures so shader packs
- * can request flipped buffers during composite passes. The heavy lifting (copy strategies, mipmap
- * generation, etc.) will be filled in later.
+ * can request flipped buffers during composite passes.
  */
 public class RenderTarget {
     private static final ByteBuffer NULL_BUFFER = null;
@@ -36,29 +36,53 @@ public class RenderTarget {
         this.height = builder.height;
         this.valid = true;
 
-        this.mainTexture = GL11.glGenTextures();
-        this.altTexture = GL11.glGenTextures();
+        int createdMainTexture = 0;
+        int createdAltTexture = 0;
+        try {
+            createdMainTexture = createTexture("main render target texture");
+            createdAltTexture = createTexture("alternate render target texture");
+            final int setupMainTexture = createdMainTexture;
+            final int setupAltTexture = createdAltTexture;
+            boolean allowsLinear = !builder.internalFormat.getPixelFormat().isInteger();
+            OculusRenderSystem.withDefaultTextureBindingRestored(() -> {
+                setupTexture(setupMainTexture, builder.width, builder.height, allowsLinear);
+                setupTexture(setupAltTexture, builder.width, builder.height, allowsLinear);
+            });
+        } catch (RuntimeException | Error exception) {
+            Throwable failure = null;
+            final int failedMainTexture = createdMainTexture;
+            final int failedAltTexture = createdAltTexture;
+            failure = runCleanup(failure, () -> deleteTexture(failedMainTexture));
+            failure = runCleanup(failure, () -> deleteTexture(failedAltTexture));
+            addSuppressedCleanupFailure(exception, failure);
+            throw exception;
+        }
 
-        boolean allowsLinear = !builder.internalFormat.getPixelFormat().isInteger();
-        setupTexture(mainTexture, builder.width, builder.height, allowsLinear);
-        setupTexture(altTexture, builder.width, builder.height, allowsLinear);
+        this.mainTexture = createdMainTexture;
+        this.altTexture = createdAltTexture;
+    }
 
-        GL11.glBindTexture(GL11.GL_TEXTURE_2D, 0);
+    private static int createTexture(String context) {
+        int texture = GL11.glGenTextures();
+        if (texture <= 0) {
+            throw new IllegalStateException("Failed to create " + context);
+        }
+        return texture;
     }
 
     private void setupTexture(int texture, int width, int height, boolean allowsLinear) {
-        GL11.glBindTexture(GL11.GL_TEXTURE_2D, texture);
-        GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MIN_FILTER, allowsLinear ? GL11.GL_LINEAR : GL11.GL_NEAREST);
-        GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MAG_FILTER, allowsLinear ? GL11.GL_LINEAR : GL11.GL_NEAREST);
-    GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_WRAP_S, GL12.GL_CLAMP_TO_EDGE);
-    GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_WRAP_T, GL12.GL_CLAMP_TO_EDGE);
         resizeTexture(texture, width, height);
+        OculusRenderSystem.texParameteri(texture, GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MIN_FILTER,
+            allowsLinear ? GL11.GL_LINEAR : GL11.GL_NEAREST);
+        OculusRenderSystem.texParameteri(texture, GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MAG_FILTER,
+            allowsLinear ? GL11.GL_LINEAR : GL11.GL_NEAREST);
+        OculusRenderSystem.texParameteri(texture, GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_WRAP_S, GL12.GL_CLAMP_TO_EDGE);
+        OculusRenderSystem.texParameteri(texture, GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_WRAP_T, GL12.GL_CLAMP_TO_EDGE);
     }
 
     private void resizeTexture(int texture, int width, int height) {
-        GL11.glBindTexture(GL11.GL_TEXTURE_2D, texture);
-        GL11.glTexImage2D(GL11.GL_TEXTURE_2D, 0, internalFormat.getGlFormat(), width, height, 0, format.getGlFormat(), type.getGlFormat(), NULL_BUFFER);
-        GL11.glBindTexture(GL11.GL_TEXTURE_2D, 0);
+        OculusRenderSystem.texImage2D(texture, GL11.GL_TEXTURE_2D, 0, internalFormat.getGlFormat(),
+            width, height, 0, format.getGlFormat(), type.getGlFormat(), NULL_BUFFER);
     }
 
     public void resize(Vector2i override) {
@@ -67,10 +91,12 @@ public class RenderTarget {
 
     public void resize(int width, int height) {
         requireValid();
+        OculusRenderSystem.withDefaultTextureBindingRestored(() -> {
+            resizeTexture(mainTexture, width, height);
+            resizeTexture(altTexture, width, height);
+        });
         this.width = width;
         this.height = height;
-        resizeTexture(mainTexture, width, height);
-        resizeTexture(altTexture, width, height);
     }
 
     public int getMainTexture() {
@@ -84,14 +110,17 @@ public class RenderTarget {
     }
 
     public int getWidth() {
+        requireValid();
         return width;
     }
 
     public int getHeight() {
+        requireValid();
         return height;
     }
 
     public InternalTextureFormat getInternalFormat() {
+        requireValid();
         return internalFormat;
     }
 
@@ -100,8 +129,69 @@ public class RenderTarget {
             return;
         }
         valid = false;
-        GL11.glDeleteTextures(mainTexture);
-        GL11.glDeleteTextures(altTexture);
+        Throwable failure = null;
+        failure = runCleanup(failure, () -> deleteTexture(mainTexture));
+        failure = runCleanup(failure, () -> deleteTexture(altTexture));
+        rethrowCleanupFailure(failure);
+    }
+
+    private static void deleteTexture(int texture) {
+        if (texture <= 0) {
+            return;
+        }
+
+        Throwable failure = null;
+        try {
+            GL11.glDeleteTextures(texture);
+        } catch (RuntimeException | Error exception) {
+            failure = addCleanupFailure(failure, exception);
+        } finally {
+            try {
+                TextureLifecycleTracker.onDeleteTexture(texture);
+            } catch (RuntimeException | Error exception) {
+                failure = addCleanupFailure(failure, exception);
+            }
+        }
+
+        rethrowCleanupFailure(failure);
+    }
+
+    private static Throwable runCleanup(Throwable failure, Runnable cleanup) {
+        try {
+            cleanup.run();
+        } catch (RuntimeException | Error exception) {
+            failure = addCleanupFailure(failure, exception);
+        }
+        return failure;
+    }
+
+    private static Throwable addCleanupFailure(Throwable failure, Throwable exception) {
+        if (failure == null) {
+            return exception;
+        }
+        if (exception != failure) {
+            failure.addSuppressed(exception);
+        }
+        return failure;
+    }
+
+    private static void addSuppressedCleanupFailure(Throwable primary, Throwable cleanupFailure) {
+        if (primary != null && cleanupFailure != null && cleanupFailure != primary) {
+            primary.addSuppressed(cleanupFailure);
+        }
+    }
+
+    private static void rethrowCleanupFailure(Throwable failure) {
+        if (failure == null) {
+            return;
+        }
+        if (failure instanceof RuntimeException) {
+            throw (RuntimeException) failure;
+        }
+        if (failure instanceof Error) {
+            throw (Error) failure;
+        }
+        throw new RuntimeException(failure);
     }
 
     private void requireValid() {

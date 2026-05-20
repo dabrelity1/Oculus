@@ -1,5 +1,7 @@
 package net.oculus.gl.image;
 
+import java.util.function.IntSupplier;
+
 import net.oculus.gl.OculusRenderSystem;
 
 /**
@@ -11,8 +13,8 @@ public final class ImageLimits {
 
     private final int maxImageUnits;
 
-    private ImageLimits() {
-        this.maxImageUnits = OculusRenderSystem.getMaxImageUnits();
+    private ImageLimits(int maxImageUnits) {
+        this.maxImageUnits = Math.max(0, maxImageUnits);
     }
 
     public int getMaxImageUnits() {
@@ -20,10 +22,23 @@ public final class ImageLimits {
     }
 
     public static ImageLimits get() {
-        if (instance == null) {
-            instance = new ImageLimits();
+        return get(OculusRenderSystem::getMaxImageUnits);
+    }
+
+    static ImageLimits get(IntSupplier maxImageUnitsSupplier) {
+        if (instance != null && instance.maxImageUnits > 0) {
+            return instance;
+        }
+
+        int probedMaxImageUnits = maxImageUnitsSupplier.getAsInt();
+        if (instance == null || probedMaxImageUnits > instance.maxImageUnits) {
+            instance = new ImageLimits(probedMaxImageUnits);
         }
 
         return instance;
+    }
+
+    static void reset() {
+        instance = null;
     }
 }

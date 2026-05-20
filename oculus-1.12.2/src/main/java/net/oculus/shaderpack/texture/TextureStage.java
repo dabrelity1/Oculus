@@ -1,6 +1,5 @@
 package net.oculus.shaderpack.texture;
 
-import java.util.Locale;
 import java.util.Optional;
 
 /**
@@ -26,7 +25,7 @@ public enum TextureStage {
             return Optional.empty();
         }
 
-        switch (name.toLowerCase(Locale.ROOT)) {
+        switch (name) {
             case "shadowcomp":
                 return Optional.of(SHADOWCOMP);
             case "prepare":

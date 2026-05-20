@@ -1,6 +1,5 @@
 package net.oculus.gl.program;
 
-import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Supplier;
@@ -23,14 +22,28 @@ public final class TextureBindingRegistry {
         if (samplerName == null || binding == null) {
             return;
         }
-        BINDINGS.put(samplerName.toLowerCase(Locale.ROOT), binding);
+        BINDINGS.put(samplerName, binding);
     }
 
     public static TextureBinding resolve(String samplerName) {
         if (samplerName == null) {
             return DEFAULT_BINDING.get();
         }
-        return BINDINGS.getOrDefault(samplerName.toLowerCase(Locale.ROOT), DEFAULT_BINDING.get());
+        return BINDINGS.getOrDefault(samplerName, DEFAULT_BINDING.get());
+    }
+
+    public static void unregister(String samplerName) {
+        if (samplerName == null) {
+            return;
+        }
+        BINDINGS.remove(samplerName);
+    }
+
+    public static void unregister(String samplerName, TextureBinding binding) {
+        if (samplerName == null || binding == null) {
+            return;
+        }
+        BINDINGS.remove(samplerName, binding);
     }
 
     public static void clear() {

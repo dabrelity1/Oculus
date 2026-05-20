@@ -1,15 +1,11 @@
 package net.oculus.shaderpack;
 
 import java.util.Optional;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 /**
  * Parses OptiFine comment directives such as {@code /* DRAWBUFFERS:01234 *\/}.
  */
 public final class CommentDirectiveParser {
-    private static final Pattern DIRECTIVE_PATTERN = Pattern.compile("/\\*\\s*(DRAWBUFFERS|RENDERTARGETS)\\s*:(.*?)\\s*\\*/");
-
     private CommentDirectiveParser() {
     }
 
@@ -22,15 +18,35 @@ public final class CommentDirectiveParser {
             return Optional.empty();
         }
 
-        Matcher matcher = DIRECTIVE_PATTERN.matcher(fragment);
-        while (matcher.find()) {
-            String type = matcher.group(1);
-            if (directiveType == null || directiveType.equals(type)) {
-                String directive = matcher.group(2).trim();
-                return Optional.of(new CommentDirective(CommentDirective.Type.valueOf(type), directive, matcher.start()));
+        if (directiveType == null) {
+            Optional<CommentDirective> drawBuffers = findDirective(fragment, CommentDirective.Type.DRAWBUFFERS);
+            Optional<CommentDirective> renderTargets = findDirective(fragment, CommentDirective.Type.RENDERTARGETS);
+            if (drawBuffers.isPresent() && renderTargets.isPresent()) {
+                return drawBuffers.get().getLocation() > renderTargets.get().getLocation()
+                    ? drawBuffers
+                    : renderTargets;
             }
+            return drawBuffers.isPresent() ? drawBuffers : renderTargets;
         }
 
-        return Optional.empty();
+        String prefix = directiveType + ":";
+        int prefixIndex = fragment.lastIndexOf(prefix);
+        if (prefixIndex < 0) {
+            return Optional.empty();
+        }
+
+        String before = fragment.substring(0, prefixIndex).trim();
+        if (!before.endsWith("/*")) {
+            return Optional.empty();
+        }
+
+        String afterPrefix = fragment.substring(prefixIndex + prefix.length());
+        int suffixIndex = afterPrefix.indexOf("*/");
+        if (suffixIndex < 0) {
+            return Optional.empty();
+        }
+
+        String directive = afterPrefix.substring(0, suffixIndex).trim();
+        return Optional.of(new CommentDirective(CommentDirective.Type.valueOf(directiveType), directive, prefixIndex));
     }
 }

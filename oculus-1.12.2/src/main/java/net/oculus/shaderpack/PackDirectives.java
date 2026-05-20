@@ -24,12 +24,19 @@ public final class PackDirectives {
     private boolean vignette;
     private boolean sun;
     private boolean moon;
+    private boolean backFaceSolid;
+    private boolean backFaceCutout;
+    private boolean backFaceCutoutMipped;
+    private boolean backFaceTranslucent;
     private boolean rainDepth;
+    private boolean beaconBeamDepth;
     private boolean separateAo;
+    private boolean frustumCulling;
+    private boolean occlusionCulling;
     private boolean oldLighting;
     private boolean concurrentCompute;
     private boolean oldHandLight;
-    private boolean particlesBeforeDeferred;
+    private ParticleRenderingOrder particleRenderingOrder;
     private boolean prepareBeforeShadow;
 
     private final PackRenderTargetDirectives renderTargetDirectives;
@@ -64,13 +71,23 @@ public final class PackDirectives {
         vignette = properties.getVignette().orElse(false);
         sun = properties.getSun().orElse(true);
         moon = properties.getMoon().orElse(true);
+        backFaceSolid = properties.getBackFaceSolid().orElse(false);
+        backFaceCutout = properties.getBackFaceCutout().orElse(false);
+        backFaceCutoutMipped = properties.getBackFaceCutoutMipped().orElse(false);
+        backFaceTranslucent = properties.getBackFaceTranslucent().orElse(false);
         rainDepth = properties.getRainDepth().orElse(false);
+        beaconBeamDepth = properties.getBeaconBeamDepth().orElse(false);
         separateAo = properties.getSeparateAo().orElse(false);
+        frustumCulling = properties.getFrustumCulling().orElse(true);
+        occlusionCulling = properties.getOcclusionCulling().orElse(true);
         oldLighting = properties.getOldLighting().orElse(false);
         supportsColorCorrection = properties.supportsColorCorrection().orElse(false);
         concurrentCompute = properties.getConcurrentCompute().orElse(false);
         oldHandLight = properties.getOldHandLight().orElse(true);
-        particlesBeforeDeferred = properties.getParticlesBeforeDeferred().orElse(false);
+        particleRenderingOrder = properties.getParticleRenderingOrder()
+            .orElseGet(() -> properties.getParticlesBeforeDeferred().orElse(false)
+                ? ParticleRenderingOrder.BEFORE
+                : ParticleRenderingOrder.DEFAULT);
         prepareBeforeShadow = properties.getPrepareBeforeShadow().orElse(false);
     }
 
@@ -82,7 +99,8 @@ public final class PackDirectives {
         directives.acceptConstFloatDirective("sunPathRotation", value -> this.sunPathRotation = value);
         directives.acceptConstFloatDirective("ambientOcclusionLevel", value -> this.ambientOcclusionLevel = clamp(value, 0.0f, 1.0f));
         directives.acceptConstFloatDirective("wetnessHalflife", value -> this.wetnessHalfLife = value);
-        directives.acceptConstFloatDirective("drynessHalflife", value -> this.drynessHalfLife = value);
+        // Mirrors the local Oculus 1.16.5 PackDirectives assignment exactly.
+        directives.acceptConstFloatDirective("drynessHalflife", value -> this.wetnessHalfLife = value);
         directives.acceptConstFloatDirective("eyeBrightnessHalflife", value -> this.eyeBrightnessHalfLife = value);
         directives.acceptConstFloatDirective("centerDepthHalflife", value -> this.centerDepthHalfLife = value);
     }
@@ -111,12 +129,40 @@ public final class PackDirectives {
         return moon;
     }
 
+    public boolean shouldRenderSolidBackFaces() {
+        return backFaceSolid;
+    }
+
+    public boolean shouldRenderCutoutBackFaces() {
+        return backFaceCutout;
+    }
+
+    public boolean shouldRenderCutoutMippedBackFaces() {
+        return backFaceCutoutMipped;
+    }
+
+    public boolean shouldRenderTranslucentBackFaces() {
+        return backFaceTranslucent;
+    }
+
     public boolean rainDepth() {
         return rainDepth;
     }
 
+    public boolean beaconBeamDepth() {
+        return beaconBeamDepth;
+    }
+
     public boolean shouldUseSeparateAo() {
         return separateAo;
+    }
+
+    public boolean shouldUseFrustumCulling() {
+        return frustumCulling;
+    }
+
+    public boolean shouldUseOcclusionCulling() {
+        return occlusionCulling;
     }
 
     public boolean isOldLighting() {
@@ -132,7 +178,11 @@ public final class PackDirectives {
     }
 
     public boolean areParticlesBeforeDeferred() {
-        return particlesBeforeDeferred;
+        return particleRenderingOrder == ParticleRenderingOrder.BEFORE;
+    }
+
+    public ParticleRenderingOrder getParticleRenderingOrder() {
+        return particleRenderingOrder;
     }
 
     public boolean isPrepareBeforeShadow() {
@@ -177,12 +227,15 @@ public final class PackDirectives {
             }
 
             if (index != -1) {
+                if (resolved.containsKey(index)) {
+                    throw new IllegalArgumentException("Multiple entries with same key: " + index);
+                }
                 resolved.put(index, shouldFlip);
             } else {
                 Oculus.LOGGER.warn("Unknown buffer '{}' in flip directive for pass {}", buffer, pass);
             }
         });
-        return resolved;
+        return Collections.unmodifiableMap(resolved);
     }
 
     public PackRenderTargetDirectives getRenderTargetDirectives() {

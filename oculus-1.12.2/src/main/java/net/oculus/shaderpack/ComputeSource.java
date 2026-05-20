@@ -6,9 +6,8 @@ import net.oculus.vendored.joml.Vector2f;
 import net.oculus.vendored.joml.Vector3i;
 
 /**
- * Port of the Iris {@code ComputeSource}. Compute shaders are not executed in
- * the 1.12 build yet, but the data model is kept so the pipeline can be wired
- * without large refactors.
+ * Port of the Iris {@code ComputeSource}. It carries the shader source and
+ * work group directives used by staged compute dispatch in the 1.12 pipeline.
  */
 public final class ComputeSource {
     private final String name;

@@ -4,10 +4,10 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
+import net.oculus.colorspace.ColorSpace;
 import net.oculus.gl.shader.ShaderType;
 import net.oculus.gl.shader.StandardMacros;
 import net.oculus.shaderpack.ProgramSet;
-import net.oculus.shaderpack.ShaderPack;
 import net.oculus.shaderpack.StringPair;
 import net.oculus.shaderpack.include.AbsolutePackPath;
 
@@ -28,7 +28,24 @@ public final class ShaderPreprocessor {
         }
         defines.addAll(buildDimensionDefines(programSet));
         defines.addAll(buildLegacyCompatibilityDefines());
+        if (programSet != null) {
+            defines.addAll(IrisFeatureDefines.createFeatureDefines(programSet.getShaderProperties()));
+            defines.addAll(buildColorSpaceDefines(programSet));
+        }
         return Collections.unmodifiableList(defines);
+    }
+
+    static List<StringPair> buildColorSpaceDefines(ProgramSet programSet) {
+        List<StringPair> defines = new ArrayList<>();
+        if (programSet == null || programSet.getShaderProperties() == null
+            || !programSet.getShaderProperties().supportsColorCorrection().orElse(false)) {
+            return defines;
+        }
+
+        for (ColorSpace space : ColorSpace.values()) {
+            defines.add(new StringPair("COLOR_SPACE_" + space.name(), String.valueOf(space.ordinal())));
+        }
+        return defines;
     }
 
     public static String applyDefines(String source, ShaderType shaderType, String programName,
@@ -43,14 +60,21 @@ public final class ShaderPreprocessor {
         return ensureShaderCompatibility(injectDefines(source, defines), shaderType);
     }
 
+    public static List<StringPair> createStageDefines(ShaderType shaderType) {
+        return Collections.unmodifiableList(buildStageDefines(shaderType));
+    }
+
+    public static List<StringPair> createProgramDefines(String programName) {
+        return Collections.unmodifiableList(buildProgramDefines(programName));
+    }
+
     private static List<StringPair> buildDimensionDefines(ProgramSet programSet) {
         List<StringPair> defines = new ArrayList<>();
         if (programSet == null) {
             return defines;
         }
 
-        ShaderPack pack = programSet.getPack();
-        AbsolutePackPath programRoot = pack == null ? null : pack.getProgramRoot();
+        AbsolutePackPath programRoot = programSet.getProgramRoot();
         String dimensionMacro = determineDimensionMacro(programRoot);
         if (dimensionMacro == null || dimensionMacro.isEmpty()) {
             return defines;
@@ -92,12 +116,12 @@ public final class ShaderPreprocessor {
         return slash >= 0 ? trimmed.substring(0, slash) : trimmed;
     }
 
-    private static List<StringPair> buildLegacyCompatibilityDefines() {
+    static List<StringPair> buildLegacyCompatibilityDefines() {
         List<StringPair> defines = new ArrayList<>();
         // OptiFine-era alias uniforms used by Complementary's line rendering path.
         defines.add(new StringPair("projectionMatrix", "gbufferProjection"));
         defines.add(new StringPair("modelViewMatrix", "gbufferModelView"));
-        defines.add(new StringPair("vaPosition", "gl_Vertex"));
+        defines.add(new StringPair("vaPosition", "gl_Vertex.xyz"));
         defines.add(new StringPair("vaNormal", "gl_Normal"));
         return defines;
     }

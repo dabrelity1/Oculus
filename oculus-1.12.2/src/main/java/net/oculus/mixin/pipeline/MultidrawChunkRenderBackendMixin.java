@@ -27,6 +27,11 @@ public abstract class MultidrawChunkRenderBackendMixin {
 
         for (int i = 0; i < bindings.length; i++) {
             TessellationBinding binding = bindings[i];
+            if (binding.isInstanced()) {
+                augmented[i] = binding;
+                continue;
+            }
+
             GlVertexAttributeBinding[] augmentedAttributes = OculusVertexBindingHelper.createAugmentedBindings(format, binding.getAttributeBindings());
             augmented[i] = new TessellationBinding(binding.getBuffer(), augmentedAttributes, binding.isInstanced());
         }

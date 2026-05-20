@@ -2,12 +2,13 @@ package net.oculus.postprocess;
 
 import com.google.common.collect.ImmutableSet;
 import java.util.HashSet;
+import java.util.Iterator;
 import java.util.Set;
 
 /**
  * Tracks which render target buffers have been "flipped" between their main
  * and alternate textures during composite passes.
- * 
+ *
  * <p>Shader packs often use ping-pong buffering where a pass reads from one
  * texture and writes to another for the same buffer, then the next pass
  * reads from what was just written. This class tracks which buffers are
@@ -33,6 +34,14 @@ public final class BufferFlipper {
      */
     public boolean isFlipped(int buffer) {
         return flippedBuffers.contains(buffer);
+    }
+
+    /**
+     * Returns an iterator over the currently flipped buffers, matching the
+     * Iris 1.16.5 helper used by final-pass swap setup.
+     */
+    public Iterator<Integer> getFlippedBuffers() {
+        return flippedBuffers.iterator();
     }
 
     /**

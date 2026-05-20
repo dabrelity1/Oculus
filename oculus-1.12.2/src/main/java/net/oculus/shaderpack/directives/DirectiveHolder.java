@@ -8,9 +8,9 @@ import net.oculus.vendored.joml.Vector3i;
 import net.oculus.vendored.joml.Vector4f;
 
 /**
- * Stripped-down version of the Iris {@code DirectiveHolder}. It exposes the
- * hooks required by the ported shader metadata classes, but each method is a
- * no-op until directive parsing is implemented.
+ * Stripped-down version of the Iris {@code DirectiveHolder}. Implementations
+ * register consumers for directive names and invoke them while parsed shader
+ * comments or const declarations are dispatched.
  */
 public interface DirectiveHolder {
     default void acceptUniformDirective(String name, Runnable onDetected) {

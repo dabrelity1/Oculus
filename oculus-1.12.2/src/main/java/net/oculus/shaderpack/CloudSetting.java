@@ -1,8 +1,7 @@
 package net.oculus.shaderpack;
 
 /**
- * Subset of the cloud rendering options supported by the modern pipeline. The
- * 1.12.2 build currently forwards everything to vanilla behaviour.
+ * Subset of the cloud rendering options supported by the modern pipeline.
  */
 public enum CloudSetting {
     DEFAULT,

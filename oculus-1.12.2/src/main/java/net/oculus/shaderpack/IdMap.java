@@ -33,8 +33,8 @@ import net.oculus.shaderpack.preprocessor.PropertiesPreprocessor;
  */
 public final class IdMap {
     private static final IdMap EMPTY = new IdMap(
-        Object2IntMaps.emptyMap(),
-        Object2IntMaps.emptyMap(),
+        emptyIdMap(),
+        emptyIdMap(),
         Int2ObjectMaps.emptyMap(),
         Collections.emptyMap()
     );
@@ -49,9 +49,7 @@ public final class IdMap {
             .map(IdMap::parseItemIdMap)
             .orElse(Object2IntMaps.emptyMap());
 
-        this.entityIdMap = loadProperties(shaderRoot, "entity.properties", shaderPackOptions, environmentDefines)
-            .map(IdMap::parseEntityIdMap)
-            .orElse(Object2IntMaps.emptyMap());
+        this.entityIdMap = loadEntityIdMap(shaderRoot, shaderPackOptions, environmentDefines);
 
         Optional<Properties> blockProperties = loadBlockProperties(shaderRoot, shaderPackOptions, environmentDefines);
         if (blockProperties.isPresent()) {
@@ -78,6 +76,12 @@ public final class IdMap {
         return EMPTY;
     }
 
+    private static Object2IntMap<NamespacedId> emptyIdMap() {
+        Object2IntOpenHashMap<NamespacedId> map = new Object2IntOpenHashMap<>();
+        map.defaultReturnValue(-1);
+        return Object2IntMaps.unmodifiable(map);
+    }
+
     private static Optional<Properties> loadProperties(Path shaderPath, String name, ShaderPackOptions shaderPackOptions,
                                                        Iterable<StringPair> environmentDefines) {
         String fileContents = readProperties(shaderPath, name);
@@ -96,9 +100,49 @@ public final class IdMap {
         return Optional.of(properties);
     }
 
+    private static Optional<Properties> loadRawProperties(Path shaderPath, String name) {
+        String fileContents = readProperties(shaderPath, name);
+        if (fileContents == null) {
+            return Optional.empty();
+        }
+
+        Properties properties = new OrderBackedProperties();
+        try {
+            properties.load(new StringReader(fileContents));
+        } catch (IOException exception) {
+            Oculus.LOGGER.error("Failed to parse raw {} in shader pack", name, exception);
+            return Optional.empty();
+        }
+        return Optional.of(properties);
+    }
+
     private static Optional<Properties> loadBlockProperties(Path shaderRoot, ShaderPackOptions shaderPackOptions,
                                                             Iterable<StringPair> environmentDefines) {
         return loadProperties(shaderRoot, "block.properties", shaderPackOptions, environmentDefines);
+    }
+
+    private static Object2IntMap<NamespacedId> loadEntityIdMap(Path shaderRoot,
+                                                               ShaderPackOptions shaderPackOptions,
+                                                               Iterable<StringPair> environmentDefines) {
+        Object2IntMap<NamespacedId> active = loadProperties(
+            shaderRoot,
+            "entity.properties",
+            shaderPackOptions,
+            environmentDefines
+        ).map(IdMap::parseEntityIdMap).orElse(emptyIdMap());
+
+        Object2IntMap<NamespacedId> raw = loadRawProperties(shaderRoot, "entity.properties")
+            .map(IdMap::parseEntityIdMap)
+            .orElse(emptyIdMap());
+        if (raw.isEmpty()) {
+            return active;
+        }
+
+        Object2IntOpenHashMap<NamespacedId> merged = new Object2IntOpenHashMap<>();
+        merged.defaultReturnValue(-1);
+        merged.putAll(raw);
+        merged.putAll(active);
+        return Object2IntMaps.unmodifiable(merged);
     }
 
     private static String readProperties(Path shaderPath, String name) {

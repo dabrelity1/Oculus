@@ -3,8 +3,8 @@ package com.mojang.math;
 import java.util.Arrays;
 
 /**
- * Extremely small placeholder for Mojang's {@code Matrix4f}. Only stores 16 floats so the
- * RenderSystem contract can be expressed during the backport.
+ * Modern-name compatibility value type for copied code that only needs a 16-float
+ * matrix container. Active shader uniform matrix math lives under net.oculus.
  */
 public class Matrix4f {
     private final float[] values = new float[16];

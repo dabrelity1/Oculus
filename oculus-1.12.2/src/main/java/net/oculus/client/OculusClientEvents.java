@@ -13,13 +13,14 @@ import net.minecraftforge.fml.common.gameevent.TickEvent;
 import net.oculus.Oculus;
 import net.oculus.config.OculusConfig;
 import net.oculus.gui.ShaderPackScreen;
-import net.oculus.pipeline.PipelineManager;
-import net.oculus.shaderpack.ShaderPack;
 
 /**
  * Handles client-only events such as keybind polling.
  */
 public final class OculusClientEvents {
+    private boolean startupConfigApplied;
+    private final OculusRuntimeValidation runtimeValidation = new OculusRuntimeValidation();
+
     @SubscribeEvent
     public void onClientTick(TickEvent.ClientTickEvent event) {
         if (event.phase != TickEvent.Phase.END) {
@@ -31,21 +32,32 @@ public final class OculusClientEvents {
             return;
         }
 
+        applyStartupConfig(minecraft);
+        runtimeValidation.onClientTick(minecraft);
         handleReload(minecraft);
         handleToggle(minecraft);
         handleGui(minecraft);
     }
 
+    private void applyStartupConfig(Minecraft minecraft) {
+        if (startupConfigApplied || minecraft.gameDir == null) {
+            return;
+        }
+
+        startupConfigApplied = true;
+        ShaderPackReloader.applyConfiguredShaderPack();
+    }
+
     private void handleReload(Minecraft minecraft) {
         while (OculusKeyBindings.RELOAD.isPressed()) {
+            boolean reloaded = ShaderPackReloader.reload();
             OculusConfig config = Oculus.getConfig();
-            ShaderPack activePack = PipelineManager.INSTANCE.getActivePack();
-            if (config != null && config.areShadersEnabled() && activePack != null && !activePack.isInternal()) {
-                if (ShaderPackReloader.reload()) {
-                    notifyPlayer(minecraft.player, new TextComponentString("Shaders reloaded."));
-                }
-            } else {
+            if (reloaded) {
+                notifyPlayer(minecraft.player, new TextComponentString("Shaders reloaded."));
+            } else if (config != null && !config.areShadersEnabled()) {
                 notifyPlayer(minecraft.player, new TextComponentString("Enable shaders in the GUI before reloading."));
+            } else {
+                notifyPlayer(minecraft.player, new TextComponentString("No valid shader pack is selected."));
             }
         }
     }
@@ -57,13 +69,21 @@ public final class OculusClientEvents {
         }
 
         while (OculusKeyBindings.TOGGLE.isPressed()) {
-            boolean newValue = !config.areShadersEnabled();
+            boolean previousValue = config.areShadersEnabled();
+            boolean newValue = !previousValue;
             config.setShadersEnabled(newValue);
-            saveConfig(config);
+            if (!saveConfig(config)) {
+                config.setShadersEnabled(previousValue);
+                notifyPlayer(minecraft.player, new TextComponentString("Failed to write Oculus config."));
+                continue;
+            }
 
-            String message = newValue
-                ? "Shaders marked as enabled. Use Apply in the GUI to load them."
-                : "Shaders disabled.";
+            boolean reloaded = ShaderPackReloader.reload();
+            String message = newValue && reloaded
+                ? "Shaders enabled."
+                : newValue
+                    ? "No valid shader pack is selected."
+                    : "Shaders disabled.";
             notifyPlayer(minecraft.player, new TextComponentString(message));
         }
     }
@@ -81,11 +101,13 @@ public final class OculusClientEvents {
         }
     }
 
-    private void saveConfig(OculusConfig config) {
+    private boolean saveConfig(OculusConfig config) {
         try {
             config.save();
+            return true;
         } catch (IOException exception) {
             Oculus.LOGGER.warn("Failed to write Oculus config", exception);
+            return false;
         }
     }
 }

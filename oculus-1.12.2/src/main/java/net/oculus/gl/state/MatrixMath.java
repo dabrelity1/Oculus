@@ -166,6 +166,20 @@ public final class MatrixMath {
         return true;
     }
 
+    public static void transpose(float[] source, float[] target) {
+        float[] result = source == target ? new float[16] : target;
+
+        for (int row = 0; row < 4; row++) {
+            for (int col = 0; col < 4; col++) {
+                result[row + col * 4] = source[col + row * 4];
+            }
+        }
+
+        if (result != target) {
+            System.arraycopy(result, 0, target, 0, 16);
+        }
+    }
+
     public static void multiply(float[] left, float[] right, float[] target) {
         float[] result = (target == left || target == right) ? new float[16] : target;
 

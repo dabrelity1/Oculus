@@ -28,8 +28,6 @@ public final class Profile {
             return false;
         }
 
-        Map<String, String> snapshot = values.asMap();
-
         for (Map.Entry<String, String> entry : this.optionValues.entrySet()) {
             String option = entry.getKey();
             String value = entry.getValue();
@@ -48,11 +46,6 @@ public final class Profile {
                     return false;
                 }
                 continue;
-            }
-
-            String rawValue = snapshot.get(option);
-            if (rawValue == null || !rawValue.equals(value)) {
-                return false;
             }
         }
 
@@ -76,7 +69,7 @@ public final class Profile {
         }
 
         public Builder disableProgram(String programId) {
-            if (programId != null && !programId.isEmpty()) {
+            if (programId != null) {
                 this.disabledPrograms.add(programId);
             }
             return this;

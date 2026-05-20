@@ -1,24 +1,18 @@
 package net.oculus.gui.element;
 
 import java.util.ArrayList;
-import java.util.Collections;
-import java.util.HashSet;
 import java.util.List;
-import java.util.Map;
-import java.util.Set;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.FontRenderer;
 import net.minecraft.client.gui.Gui;
 import net.minecraft.client.gui.GuiScreen;
 import net.minecraft.client.gui.GuiSlot;
-import net.minecraft.client.resources.I18n;
 import net.minecraft.util.text.ITextComponent;
 import net.minecraft.util.text.TextComponentString;
 import net.minecraft.util.text.TextComponentTranslation;
 import net.minecraft.util.text.TextFormatting;
 
-import net.oculus.Oculus;
 import net.oculus.gui.GuiUtil;
 import net.oculus.gui.NavigationController;
 import net.oculus.gui.ShaderPackScreen;
@@ -28,9 +22,6 @@ import net.oculus.gui.element.widget.OptionMenuConstructor;
 import net.oculus.shaderpack.ShaderPack;
 import net.oculus.shaderpack.ShaderProperties;
 import net.oculus.shaderpack.option.OptionSet;
-import net.oculus.shaderpack.option.Profile;
-import net.oculus.shaderpack.option.ProfileSet;
-import net.oculus.shaderpack.option.menu.OptionMenuElement;
 import net.oculus.shaderpack.option.values.MutableOptionValues;
 import net.oculus.shaderpack.option.menu.OptionMenuContainer;
 
@@ -46,7 +37,6 @@ public class ShaderPackOptionList extends GuiSlot {
     private static final TextComponentTranslation RESET_TOOLTIP = createTooltip("options.iris.reset.tooltip", TextFormatting.RED);
     private static final TextComponentTranslation IMPORT_TOOLTIP = createTooltip("options.iris.importSettings.tooltip", TextFormatting.AQUA);
     private static final TextComponentTranslation EXPORT_TOOLTIP = createTooltip("options.iris.exportSettings.tooltip", TextFormatting.GOLD);
-    private static final Set<String> PROFILE_WARNING_LOG = new HashSet<>();
 
     private final ShaderPackScreen screen;
     private NavigationController navigation;
@@ -56,7 +46,6 @@ public class ShaderPackOptionList extends GuiSlot {
     private ShaderProperties properties = ShaderProperties.empty();
     private MutableOptionValues optionValues = createEmptyOptionValues();
     private OptionMenuContainer container;
-    private ProfileSet profileSet = ProfileSet.empty();
     private int slotWidth;
     private long lastClickTime;
     private int lastClickIndex = -1;
@@ -79,7 +68,6 @@ public class ShaderPackOptionList extends GuiSlot {
         this.container = pack != null ? pack.getMenuContainer() : OptionMenuContainer.EMPTY;
         this.properties = pack != null ? pack.getProperties() : ShaderProperties.empty();
         this.optionValues = values != null ? values : createEmptyOptionValues();
-        this.profileSet = pack != null ? pack.getProfileSet() : ProfileSet.empty();
     }
 
     public void rebuild() {
@@ -104,129 +92,11 @@ public class ShaderPackOptionList extends GuiSlot {
         this.elementWidgets.clear();
         this.amountScrolled = 0.0F;
 
-        if (this.properties == null) {
-            OptionMenuConstructor.constructAndApplyToScreen(this.container, this.screen, this, this.navigation);
-            return;
-        }
-
-        buildFromProperties(this.properties);
-    }
-
-    private void buildFromProperties(ShaderProperties shaderProperties) {
-        boolean hasHistory = this.navigation != null && this.navigation.hasHistory();
-        ITextComponent heading = GuiUtil.translateOrDefault(new TextComponentString("Shader Options"), "options.iris.shaderPackSettings");
-        addHeader(heading, hasHistory);
-
-        Set<String> sliderOptions = new HashSet<>(shaderProperties.getSliderOptions());
-        boolean hasOptionWidgets = false;
-
-        List<String> mainOptions = shaderProperties.getMainScreenOptions().orElse(Collections.<String>emptyList());
-    List<AbstractElementWidget<?>> mainWidgets = createOptionWidgets(mainOptions, sliderOptions, this.optionValues);
-        if (!mainWidgets.isEmpty()) {
-            int columns = shaderProperties.getMainScreenColumnCount().orElse(2);
-            addWidgets(Math.max(1, columns), mainWidgets);
-            hasOptionWidgets = true;
-        }
-
-        for (Map.Entry<String, List<String>> entry : shaderProperties.getSubScreenOptions().entrySet()) {
-            List<AbstractElementWidget<?>> widgets = createOptionWidgets(entry.getValue(), sliderOptions, this.optionValues);
-            if (widgets.isEmpty()) {
-                continue;
-            }
-
-            this.entries.add(new SectionHeaderEntry(entry.getKey()));
-            Integer columnOverride = shaderProperties.getSubScreenColumnCount().get(entry.getKey());
-            int columns = columnOverride != null ? columnOverride : shaderProperties.getMainScreenColumnCount().orElse(2);
-            addWidgets(Math.max(1, columns), widgets);
-            hasOptionWidgets = true;
-        }
-
-        if (!hasOptionWidgets) {
-            ITextComponent message = GuiUtil.translateOrDefault(new TextComponentString("No shader options available"), "options.iris.noShaderOptions");
-            this.entries.add(new MessageEntry(message));
-        }
-
-        if (!shaderProperties.getProfiles().isEmpty()) {
-            for (Map.Entry<String, List<String>> profile : shaderProperties.getProfiles().entrySet()) {
-                Profile resolved = this.profileSet.get(profile.getKey()).orElse(null);
-                if (resolved == null) {
-                    logMissingProfile(profile.getKey());
-                    continue;
-                }
-
-                ITextComponent profileHeading = new TextComponentString(formatDisplayName(profile.getKey()));
-                addHeader(profileHeading, false, false);
-                this.entries.add(new ProfileEntry(resolved, profile.getValue()));
-            }
-        }
-    }
-
-    private List<AbstractElementWidget<?>> createOptionWidgets(List<String> optionNames, Set<String> sliderOptions, MutableOptionValues values) {
-        List<AbstractElementWidget<?>> widgets = new ArrayList<>();
-
-        if (optionNames == null) {
-            return widgets;
-        }
-
-        for (String rawName : optionNames) {
-            if (rawName == null) {
-                continue;
-            }
-
-            String name = rawName.trim();
-
-            if (name.isEmpty()) {
-                continue;
-            }
-
-            if (sliderOptions.contains(name)) {
-                widgets.add(new SliderOptionWidget(name, formatDisplayName(name), values));
-            } else {
-                widgets.add(new ToggleOptionWidget(name, formatDisplayName(name), values));
-            }
-        }
-
-        return widgets;
-    }
-
-    private static String formatDisplayName(String name) {
-        if (name == null || name.isEmpty()) {
-            return "";
-        }
-
-        String sanitized = name.replace('_', ' ').replace('.', ' ');
-        String[] parts = sanitized.split("\\s+");
-        StringBuilder builder = new StringBuilder();
-
-        for (String part : parts) {
-            if (part.isEmpty()) {
-                continue;
-            }
-
-            if (builder.length() > 0) {
-                builder.append(' ');
-            }
-
-            builder.append(Character.toUpperCase(part.charAt(0)));
-            if (part.length() > 1) {
-                builder.append(part.substring(1));
-            }
-        }
-
-        return builder.length() > 0 ? builder.toString() : name;
+        OptionMenuConstructor.constructAndApplyToScreen(this.container, this.screen, this, this.navigation);
     }
 
     private static MutableOptionValues createEmptyOptionValues() {
         return new MutableOptionValues(OptionSet.builder().build());
-    }
-
-    private static void logMissingProfile(String profileName) {
-        if (profileName == null) {
-            return;
-        }
-        if (PROFILE_WARNING_LOG.add(profileName)) {
-            Oculus.LOGGER.warn("Skipping shader profile '{}' because it could not be parsed", profileName);
-        }
     }
 
     public void refresh() {
@@ -394,7 +264,7 @@ public class ShaderPackOptionList extends GuiSlot {
     }
 
     public void keyTyped(char typedChar, int keyCode) {
-        // Placeholder for future widgets needing keyboard input.
+        // No current shader option widgets consume typed keyboard input.
     }
 
     private interface Entry {
@@ -427,110 +297,6 @@ public class ShaderPackOptionList extends GuiSlot {
 
         @Override
         public void release(int index, int mouseX, int mouseY, int button) {
-        }
-    }
-
-    private class SectionHeaderEntry implements Entry {
-        private final String title;
-
-        private SectionHeaderEntry(String title) {
-            this.title = title;
-        }
-
-        @Override
-        public void draw(int index, int x, int y, int height, int mouseX, int mouseY, float partialTicks) {
-            FontRenderer font = Minecraft.getMinecraft().fontRenderer;
-            String display = formatDisplayName(this.title);
-            font.drawStringWithShadow(display, x + 4, y + (height - font.FONT_HEIGHT) / 2, 0xFFFFFF);
-            Gui.drawRect(x - 3, y + height - 2, x + ShaderPackOptionList.this.getListWidth(), y + height - 1, 0x55BEBEBE);
-        }
-
-        @Override
-        public void click(int index, int mouseX, int mouseY, int button, boolean isDoubleClick) {
-        }
-
-        @Override
-        public void release(int index, int mouseX, int mouseY, int button) {
-        }
-    }
-
-    private class ProfileEntry implements Entry {
-        private final Profile profile;
-        private final List<String> assignments;
-        private final IrisElementRow buttonRow;
-        private final IrisElementRow.TextButtonElement applyButton;
-        private final ITextComponent applyTooltip;
-
-        private ProfileEntry(Profile profile, List<String> assignments) {
-            this.profile = profile;
-            this.assignments = assignments == null ? Collections.<String>emptyList() : assignments;
-            ITextComponent buttonLabel = GuiUtil.translateOrDefault(new TextComponentString("Apply"), "options.iris.profile.apply");
-            this.applyTooltip = GuiUtil.translateOrDefault(new TextComponentString("Apply profile"), "options.iris.profile.apply.tooltip");
-            this.applyButton = new IrisElementRow.TextButtonElement(buttonLabel, this::applyButtonClicked);
-            this.buttonRow = new IrisElementRow().add(this.applyButton, 64);
-            this.applyButton.disabled = this.profile == null;
-        }
-
-        @Override
-        public void draw(int index, int x, int y, int height, int mouseX, int mouseY, float partialTicks) {
-            FontRenderer font = ShaderPackOptionList.this.mc.fontRenderer;
-            String label = "Profile: " + formatDisplayName(this.profile != null ? this.profile.name : "");
-            boolean isActive = this.profile != null
-                && ShaderPackOptionList.this.optionValues != null
-                && ShaderPackOptionList.this.optionValues.getOptionSet() != null
-                && this.profile.matches(ShaderPackOptionList.this.optionValues.getOptionSet(), ShaderPackOptionList.this.optionValues);
-
-            if (isActive) {
-                String activeLabel = I18n.hasKey("options.iris.profile.active")
-                    ? I18n.format("options.iris.profile.active")
-                    : "Active";
-                label = label + " (" + activeLabel + ")";
-            }
-
-            int labelColor = isActive ? 0xFFFF55 : 0xFFFFFF;
-            font.drawStringWithShadow(label, x + 4, y + 4, labelColor);
-
-            if (!this.assignments.isEmpty()) {
-                String joined = String.join(", ", this.assignments);
-                joined = GuiUtil.shortenText(font, joined, ShaderPackOptionList.this.getListWidth() - 80);
-                font.drawStringWithShadow(joined, x + 4, y + 14, 0xA0A0A0);
-            }
-
-            boolean rowHovered = mouseX >= x && mouseX <= x + ShaderPackOptionList.this.getListWidth()
-                && mouseY >= y && mouseY <= y + height;
-
-            this.buttonRow.renderRightAligned(x + ShaderPackOptionList.this.getListWidth() - 3, y + 2, BUTTON_HEIGHT, mouseX, mouseY, partialTicks, rowHovered);
-
-            if (this.applyButton.isHovered()) {
-                queueTooltip(font, this.applyTooltip, mouseX, mouseY);
-            }
-        }
-
-        private boolean applyButtonClicked(IrisElementRow.TextButtonElement button) {
-            if (this.profile == null) {
-                return false;
-            }
-
-            GuiUtil.playButtonClickSound();
-            screen.applyProfile(this.profile);
-            return true;
-        }
-
-        @Override
-        public void click(int index, int mouseX, int mouseY, int button, boolean isDoubleClick) {
-            this.buttonRow.mouseClicked(mouseX, mouseY, button);
-        }
-
-        @Override
-        public void release(int index, int mouseX, int mouseY, int button) {
-            this.buttonRow.mouseReleased(mouseX, mouseY, button);
-        }
-
-        private void queueTooltip(FontRenderer font, ITextComponent tooltip, int mouseX, int mouseY) {
-            final String text = tooltip.getFormattedText();
-            final int tooltipX = mouseX - (font.getStringWidth(text) + 10);
-            final int tooltipY = mouseY - 16;
-            ShaderPackScreen.TOP_LAYER_RENDER_QUEUE.add(() -> GuiUtil.drawTextPanel(font, text, tooltipX, tooltipY));
         }
     }
 
@@ -729,213 +495,4 @@ public class ShaderPackOptionList extends GuiSlot {
         }
     }
 
-    private static class ToggleOptionWidget extends AbstractElementWidget<OptionMenuElement> {
-        private final String optionName;
-        private final String displayName;
-        private final MutableOptionValues values;
-        private boolean value;
-        private int lastX;
-        private int lastWidth;
-        private ShaderPackScreen screen;
-
-        private ToggleOptionWidget(String optionName, String displayName, MutableOptionValues values) {
-            super(OptionMenuElement.EMPTY);
-            this.optionName = optionName;
-            this.displayName = displayName;
-            this.values = values;
-        }
-
-        @Override
-        public void init(ShaderPackScreen screen, NavigationController navigation) {
-            this.screen = screen;
-            pullFromModel();
-        }
-
-        private void pullFromModel() {
-            if (values == null) {
-                this.value = false;
-                return;
-            }
-
-            this.value = values.getBooleanValueOrDefault(optionName);
-        }
-
-        private void pushToModel() {
-            if (values == null) {
-                return;
-            }
-
-            values.setBooleanValue(optionName, this.value);
-        }
-
-        @Override
-        public void render(int x, int y, int width, int height, int mouseX, int mouseY, float partialTicks, boolean hovered) {
-            this.lastX = x;
-            this.lastWidth = width;
-
-            pullFromModel();
-
-            GuiUtil.drawButton(x, y, width, height, hovered, false);
-
-            FontRenderer font = Minecraft.getMinecraft().fontRenderer;
-            String label = (displayName == null || displayName.isEmpty() ? optionName : displayName) + ": " + (value ? "ON" : "OFF");
-            label = GuiUtil.shortenText(font, label, width - 10);
-            font.drawStringWithShadow(label, x + 5, y + (height - font.FONT_HEIGHT) / 2, 0xFFFFFF);
-        }
-
-        @Override
-        public boolean mouseClicked(int mouseX, int mouseY, int button) {
-            if (button != 0) {
-                return false;
-            }
-
-            if (mouseX < this.lastX || mouseX > this.lastX + this.lastWidth) {
-                return false;
-            }
-
-            this.value = !this.value;
-            pushToModel();
-            notifyChange();
-            GuiUtil.playButtonClickSound();
-            return true;
-        }
-
-        private void notifyChange() {
-            if (this.screen != null) {
-                this.screen.markPendingChanges();
-            }
-        }
-    }
-
-    private static class SliderOptionWidget extends AbstractElementWidget<OptionMenuElement> {
-        private final String optionName;
-        private final String displayName;
-        private final MutableOptionValues values;
-        private float progress = DEFAULT_VALUE;
-        private boolean dragging;
-        private int lastX;
-        private int lastWidth;
-        private int lastY;
-        private int lastHeight;
-    private ShaderPackScreen screen;
-
-        private static final float DEFAULT_VALUE = 0.5F;
-
-        private SliderOptionWidget(String optionName, String displayName, MutableOptionValues values) {
-            super(OptionMenuElement.EMPTY);
-            this.optionName = optionName;
-            this.displayName = displayName;
-            this.values = values;
-        }
-
-        @Override
-        public void init(ShaderPackScreen screen, NavigationController navigation) {
-            this.screen = screen;
-            pullFromModel();
-        }
-
-        private void pullFromModel() {
-            if (values == null) {
-                this.progress = DEFAULT_VALUE;
-                return;
-            }
-
-            this.progress = clamp(values.getFloatValueOrDefault(optionName, DEFAULT_VALUE));
-        }
-
-        private void pushToModel() {
-            if (values == null) {
-                return;
-            }
-
-            values.setFloatValue(optionName, this.progress);
-        }
-
-        @Override
-        public void render(int x, int y, int width, int height, int mouseX, int mouseY, float partialTicks, boolean hovered) {
-            this.lastX = x;
-            this.lastWidth = width;
-            this.lastY = y;
-            this.lastHeight = height;
-
-            if (this.dragging) {
-                updateProgress(mouseX);
-                pushToModel();
-            } else {
-                pullFromModel();
-            }
-
-            GuiUtil.drawButton(x, y, width, height, hovered || dragging, false);
-
-            FontRenderer font = Minecraft.getMinecraft().fontRenderer;
-            String label = displayName == null || displayName.isEmpty() ? optionName : displayName;
-            String valueText = label + ": " + Math.round(progress * 100) + "%";
-            valueText = GuiUtil.shortenText(font, valueText, width - 10);
-            font.drawStringWithShadow(valueText, x + 5, y + 5, 0xFFFFFF);
-
-            int trackLeft = x + 6;
-            int trackRight = x + width - 6;
-            int trackY = y + height - 8;
-            if (trackRight > trackLeft) {
-                Gui.drawRect(trackLeft, trackY, trackRight, trackY + 1, 0xFF3B3B3B);
-                int knobX = trackLeft + Math.round((trackRight - trackLeft) * progress);
-                Gui.drawRect(knobX - 2, trackY - 4, knobX + 2, trackY + 5, 0xFFAAAAAA);
-            }
-        }
-
-        @Override
-        public boolean mouseClicked(int mouseX, int mouseY, int button) {
-            if (button != 0 || !isInside(mouseX, mouseY)) {
-                return false;
-            }
-
-            updateProgress(mouseX);
-            pushToModel();
-            notifyChange();
-            this.dragging = true;
-            GuiUtil.playButtonClickSound();
-            return true;
-        }
-
-        @Override
-        public boolean mouseReleased(int mouseX, int mouseY, int button) {
-            if (button != 0 || !this.dragging) {
-                return false;
-            }
-
-            updateProgress(mouseX);
-            pushToModel();
-            notifyChange();
-            this.dragging = false;
-            return true;
-        }
-
-        private boolean isInside(int mouseX, int mouseY) {
-            return mouseX >= this.lastX && mouseX <= this.lastX + this.lastWidth
-                && mouseY >= this.lastY && mouseY <= this.lastY + this.lastHeight;
-        }
-
-        private void updateProgress(int mouseX) {
-            int trackLeft = this.lastX + 6;
-            int trackRight = this.lastX + this.lastWidth - 6;
-
-            if (trackRight <= trackLeft) {
-                this.progress = 0.0F;
-                return;
-            }
-
-            float relative = (mouseX - trackLeft) / (float) (trackRight - trackLeft);
-            this.progress = clamp(relative);
-        }
-
-        private float clamp(float value) {
-            return Math.max(0.0F, Math.min(1.0F, value));
-        }
-
-        private void notifyChange() {
-            if (this.screen != null) {
-                this.screen.markPendingChanges();
-            }
-        }
-    }
 }

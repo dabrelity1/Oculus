@@ -5,7 +5,7 @@ import java.util.Collections;
 import java.util.List;
 
 /**
- * Lightweight placeholder for the modern VertexFormat class used by Iris/Oculus.
+ * Modern-name compatibility data holder used by Oculus vertex-format translation.
  */
 public class VertexFormat {
     private final List<VertexFormatElement> elements;

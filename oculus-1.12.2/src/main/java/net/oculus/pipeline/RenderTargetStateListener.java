@@ -1,9 +1,5 @@
 package net.oculus.pipeline;
 
-/**
- * Minimal stub mirroring Iris's listener so framebuffer overrides can plug into the
- * rendering pipeline once the full backport lands.
- */
 public interface RenderTargetStateListener {
     RenderTargetStateListener NOP = new RenderTargetStateListener() {
         @Override

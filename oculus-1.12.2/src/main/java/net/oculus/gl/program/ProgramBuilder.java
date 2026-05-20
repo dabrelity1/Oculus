@@ -4,7 +4,11 @@ import java.nio.Buffer;
 import java.nio.ByteBuffer;
 import java.nio.IntBuffer;
 import java.nio.charset.StandardCharsets;
+import java.util.Collections;
+import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Locale;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.function.IntSupplier;
@@ -17,23 +21,38 @@ import net.oculus.gl.shader.ShaderType;
 import net.oculus.gl.state.GameDataSuppliers;
 import net.oculus.gl.state.MatrixState;
 import net.oculus.gl.state.StateUpdateNotifiers;
+import net.oculus.gl.state.ValueUpdateNotifier;
 import net.oculus.layer.GbufferPrograms;
 import net.oculus.gl.texture.InternalTextureFormat;
+import net.minecraft.client.renderer.OpenGlHelper;
+import net.oculus.pipeline.InputAvailability;
 import net.oculus.shaderpack.ProgramLoadException;
+import net.oculus.shaderpack.PackDirectives;
+import net.oculus.texture.FallbackTextures;
+import net.oculus.texture.pbr.PBRTextureManager;
 import net.oculus.uniforms.SystemTimeUniforms;
+import net.oculus.uniforms.BuiltinReplacementUniforms;
 import net.oculus.uniforms.CapturedRenderingState;
 import net.oculus.uniforms.CelestialUniforms;
 import net.oculus.uniforms.CompatibilityUniforms;
 import net.oculus.uniforms.CustomUniforms;
+import net.oculus.uniforms.FrameUpdateNotifier;
 import net.oculus.uniforms.GameplayUniforms;
+import net.oculus.uniforms.IdMapUniforms;
 import net.oculus.uniforms.ShadowUniforms;
 import net.oculus.uniforms.SpecialEffectUniforms;
 import net.oculus.uniforms.WorldInfoUniforms;
+import net.oculus.uniforms.custom.CustomUniformExpressionManager;
+import net.oculus.uniforms.transforms.SmoothedFloat;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.lwjgl.BufferUtils;
 import org.lwjgl.opengl.GL11;
 import org.lwjgl.opengl.GL20;
+import org.lwjgl.opengl.GL30;
+import org.lwjgl.opengl.GL31;
+import org.lwjgl.opengl.GL32;
+import org.lwjgl.opengl.GL42;
 
 /**
  * A trimmed-down version of the Iris {@code ProgramBuilder}. It exposes the same entry
@@ -42,6 +61,9 @@ import org.lwjgl.opengl.GL20;
  */
 public final class ProgramBuilder implements ImageHolder {
     private static final Logger LOGGER = LogManager.getLogger(ProgramBuilder.class);
+    private static final Set<Integer> WORLD_RESERVED_TEXTURE_UNITS = textureUnitSet(0, 1, 2);
+    private static final float DEFAULT_WETNESS_HALF_LIFE = 600.0F;
+    private static final float DEFAULT_DRYNESS_HALF_LIFE = 200.0F;
 
     static {
         GbufferPrograms.init();
@@ -49,23 +71,91 @@ public final class ProgramBuilder implements ImageHolder {
 
     private final String name;
     private final int program;
+    private final boolean ownsProgramHandle;
 
     private final ProgramUniforms.Builder uniforms;
     private final ProgramSamplers.Builder samplers;
     private final ProgramImages.Builder images;
+    private final CustomUniformExpressionManager customUniforms;
+    private final InputAvailability availability;
+    private final FrameUpdateNotifier frameUpdateNotifier;
+    private final PackDirectives packDirectives;
+    private Set<String> activeSamplerUniformNames;
+    private Map<String, Integer> activeSamplerUniformTypes;
+    private Set<String> activeImageUniformNames;
 
     private ProgramBuilder(String name, int program) {
-        this(name, program, SamplerOverrideMap.empty());
+        this(name, program, SamplerOverrideMap.empty(), CustomUniformExpressionManager.empty());
     }
 
     private ProgramBuilder(String name, int program, SamplerOverrideMap overrides) {
+        this(name, program, overrides, CustomUniformExpressionManager.empty());
+    }
+
+    private ProgramBuilder(String name, int program, SamplerOverrideMap overrides,
+                           CustomUniformExpressionManager customUniforms) {
+        this(name, program, overrides, customUniforms, Collections.emptySet());
+    }
+
+    private ProgramBuilder(String name, int program, SamplerOverrideMap overrides,
+                           CustomUniformExpressionManager customUniforms,
+                           Set<Integer> reservedTextureUnits) {
+        this(name, program, overrides, customUniforms, reservedTextureUnits, true);
+    }
+
+    private ProgramBuilder(String name, int program, SamplerOverrideMap overrides,
+                           CustomUniformExpressionManager customUniforms,
+                           Set<Integer> reservedTextureUnits,
+                           boolean discoverActiveUniforms) {
+        this(name, program, overrides, customUniforms, reservedTextureUnits, discoverActiveUniforms, null);
+    }
+
+    private ProgramBuilder(String name, int program, SamplerOverrideMap overrides,
+                           CustomUniformExpressionManager customUniforms,
+                           Set<Integer> reservedTextureUnits,
+                           boolean discoverActiveUniforms,
+                           InputAvailability availability) {
+        this(name, program, overrides, customUniforms, reservedTextureUnits, discoverActiveUniforms, availability,
+            null, null);
+    }
+
+    private ProgramBuilder(String name, int program, SamplerOverrideMap overrides,
+                           CustomUniformExpressionManager customUniforms,
+                           Set<Integer> reservedTextureUnits,
+                           boolean discoverActiveUniforms,
+                           InputAvailability availability,
+                           FrameUpdateNotifier frameUpdateNotifier,
+                           PackDirectives packDirectives) {
+        this(name, program, overrides, customUniforms, reservedTextureUnits, discoverActiveUniforms, availability,
+            frameUpdateNotifier, packDirectives, true);
+    }
+
+    private ProgramBuilder(String name, int program, SamplerOverrideMap overrides,
+                           CustomUniformExpressionManager customUniforms,
+                           Set<Integer> reservedTextureUnits,
+                           boolean discoverActiveUniforms,
+                           InputAvailability availability,
+                           FrameUpdateNotifier frameUpdateNotifier,
+                           PackDirectives packDirectives,
+                           boolean ownsProgramHandle) {
         this.name = name;
         this.program = program;
+        this.ownsProgramHandle = ownsProgramHandle;
         this.uniforms = ProgramUniforms.builder(name, program);
-        this.samplers = ProgramSamplers.builder(name, program, overrides);
-	this.images = ProgramImages.builder(program);
+        this.samplers = ProgramSamplers.builder(name, program, overrides,
+            reservedTextureUnitsForProgram(name, reservedTextureUnits));
+        this.images = ProgramImages.builder(program);
+        this.customUniforms = customUniforms == null ? CustomUniformExpressionManager.empty() : customUniforms;
+        this.availability = availability;
+        this.frameUpdateNotifier = frameUpdateNotifier;
+        this.packDirectives = packDirectives;
+        this.activeSamplerUniformNames = new HashSet<>();
+        this.activeSamplerUniformTypes = new HashMap<>();
+        this.activeImageUniformNames = new HashSet<>();
 
-        discoverBuiltInUniforms();
+        if (discoverActiveUniforms) {
+            discoverBuiltInUniforms();
+        }
     }
 
     public void bindAttributeLocation(int index, String attribute) {
@@ -90,26 +180,140 @@ public final class ProgramBuilder implements ImageHolder {
 
     public static ProgramBuilder begin(String name, String vertexSource, String geometrySource, String fragmentSource,
                                        SamplerOverrideMap overrides) {
+        return begin(name, vertexSource, geometrySource, fragmentSource, overrides, CustomUniformExpressionManager.empty());
+    }
+
+    public static ProgramBuilder begin(String name, String vertexSource, String geometrySource, String fragmentSource,
+                                       SamplerOverrideMap overrides,
+                                       CustomUniformExpressionManager customUniforms) {
+        return begin(name, vertexSource, geometrySource, fragmentSource, overrides, customUniforms, Collections.emptySet());
+    }
+
+    public static ProgramBuilder begin(String name, String vertexSource, String geometrySource, String fragmentSource,
+                                       SamplerOverrideMap overrides,
+                                       CustomUniformExpressionManager customUniforms,
+                                       Set<Integer> reservedTextureUnits) {
+        return begin(name, vertexSource, geometrySource, fragmentSource, overrides, customUniforms,
+            reservedTextureUnits, true);
+    }
+
+    public static ProgramBuilder begin(String name, String vertexSource, String geometrySource, String fragmentSource,
+                                       SamplerOverrideMap overrides,
+                                       CustomUniformExpressionManager customUniforms,
+                                       Set<Integer> reservedTextureUnits,
+                                       InputAvailability availability) {
+        return begin(name, vertexSource, geometrySource, fragmentSource, overrides, customUniforms,
+            reservedTextureUnits, true, availability);
+    }
+
+    public static ProgramBuilder begin(String name, String vertexSource, String geometrySource, String fragmentSource,
+                                       SamplerOverrideMap overrides,
+                                       CustomUniformExpressionManager customUniforms,
+                                       Set<Integer> reservedTextureUnits,
+                                       InputAvailability availability,
+                                       FrameUpdateNotifier frameUpdateNotifier,
+                                       PackDirectives packDirectives) {
+        return begin(name, vertexSource, geometrySource, fragmentSource, overrides, customUniforms,
+            reservedTextureUnits, true, availability, frameUpdateNotifier, packDirectives);
+    }
+
+    /**
+     * Builds an internal program whose uniforms and samplers are registered explicitly by the caller.
+     *
+     * <p>Shader-pack programs use automatic active-uniform discovery so missing built-ins remain visible
+     * in logs. Small Oculus-owned helper programs, matching the 1.16.5 builder contract, bind their
+     * complete uniform surface directly after linking and should not emit unknown-uniform warnings before
+     * those explicit bindings are attached.</p>
+     */
+    public static ProgramBuilder beginExplicit(String name, String vertexSource, String geometrySource,
+                                               String fragmentSource) {
+        return beginExplicit(name, vertexSource, geometrySource, fragmentSource, Collections.emptySet());
+    }
+
+    public static ProgramBuilder beginExplicit(String name, String vertexSource, String geometrySource,
+                                               String fragmentSource, Set<Integer> reservedTextureUnits) {
+        return begin(name, vertexSource, geometrySource, fragmentSource, SamplerOverrideMap.empty(),
+            CustomUniformExpressionManager.empty(), reservedTextureUnits, false);
+    }
+
+    /**
+     * Wraps an already-linked program so Oculus' uniform, sampler, and image binding system
+     * can update it without taking ownership of the OpenGL program object.
+     */
+    public static ProgramBuilder wrapLinkedProgram(String name, int program,
+                                                   CustomUniformExpressionManager customUniforms) {
+        return new ProgramBuilder(name, program, SamplerOverrideMap.empty(), customUniforms,
+            Collections.emptySet(), true, null, null, null, false);
+    }
+
+    public static ProgramBuilder wrapLinkedProgram(String name, int program,
+                                                   CustomUniformExpressionManager customUniforms,
+                                                   FrameUpdateNotifier frameUpdateNotifier,
+                                                   PackDirectives packDirectives) {
+        return new ProgramBuilder(name, program, SamplerOverrideMap.empty(), customUniforms,
+            Collections.emptySet(), true, null, frameUpdateNotifier, packDirectives, false);
+    }
+
+    public static ProgramBuilder wrapLinkedProgram(String name, int program,
+                                                   CustomUniformExpressionManager customUniforms,
+                                                   InputAvailability availability,
+                                                   FrameUpdateNotifier frameUpdateNotifier,
+                                                   PackDirectives packDirectives) {
+        return new ProgramBuilder(name, program, SamplerOverrideMap.empty(), customUniforms,
+            Collections.emptySet(), true, availability, frameUpdateNotifier, packDirectives, false);
+    }
+
+    private static ProgramBuilder begin(String name, String vertexSource, String geometrySource, String fragmentSource,
+                                        SamplerOverrideMap overrides,
+                                        CustomUniformExpressionManager customUniforms,
+                                        Set<Integer> reservedTextureUnits,
+                                        boolean discoverActiveUniforms) {
+        return begin(name, vertexSource, geometrySource, fragmentSource, overrides, customUniforms,
+            reservedTextureUnits, discoverActiveUniforms, null);
+    }
+
+    private static ProgramBuilder begin(String name, String vertexSource, String geometrySource, String fragmentSource,
+                                        SamplerOverrideMap overrides,
+                                        CustomUniformExpressionManager customUniforms,
+                                        Set<Integer> reservedTextureUnits,
+                                        boolean discoverActiveUniforms,
+                                        InputAvailability availability) {
+        return begin(name, vertexSource, geometrySource, fragmentSource, overrides, customUniforms,
+            reservedTextureUnits, discoverActiveUniforms, availability, null, null);
+    }
+
+    private static ProgramBuilder begin(String name, String vertexSource, String geometrySource, String fragmentSource,
+                                        SamplerOverrideMap overrides,
+                                        CustomUniformExpressionManager customUniforms,
+                                        Set<Integer> reservedTextureUnits,
+                                        boolean discoverActiveUniforms,
+                                        InputAvailability availability,
+                                        FrameUpdateNotifier frameUpdateNotifier,
+                                        PackDirectives packDirectives) {
         Objects.requireNonNull(name, "program name");
 
-        GlShader vertex = buildShader(ShaderType.VERTEX, name + ".vsh", vertexSource);
-        GlShader geometry = geometrySource != null ? buildShader(ShaderType.GEOMETRY, name + ".gsh", geometrySource) : null;
-        GlShader fragment = buildShader(ShaderType.FRAGMENT, name + ".fsh", fragmentSource);
-
+        GlShader vertex = null;
+        GlShader geometry = null;
+        GlShader fragment = null;
         int programId;
-        if (geometry != null) {
-            programId = ProgramCreator.create(name, vertex, geometry, fragment);
-        } else {
-            programId = ProgramCreator.create(name, vertex, fragment);
+        try {
+            vertex = buildShader(ShaderType.VERTEX, name + ".vsh", vertexSource);
+            geometry = geometrySource != null ? buildShader(ShaderType.GEOMETRY, name + ".gsh", geometrySource) : null;
+            fragment = buildShader(ShaderType.FRAGMENT, name + ".fsh", fragmentSource);
+
+            if (geometry != null) {
+                programId = ProgramCreator.create(name, vertex, geometry, fragment);
+            } else {
+                programId = ProgramCreator.create(name, vertex, fragment);
+            }
+        } finally {
+            destroyShader(vertex, name);
+            destroyShader(geometry, name);
+            destroyShader(fragment, name);
         }
 
-        vertex.destroy();
-        if (geometry != null) {
-            geometry.destroy();
-        }
-        fragment.destroy();
-
-        return new ProgramBuilder(name, programId, overrides);
+        return createOwningProgramBuilder(name, programId, overrides, customUniforms, reservedTextureUnits,
+            discoverActiveUniforms, availability, frameUpdateNotifier, packDirectives);
     }
 
     public static ProgramBuilder beginCompute(String name, String source) {
@@ -117,13 +321,89 @@ public final class ProgramBuilder implements ImageHolder {
     }
 
     public static ProgramBuilder beginCompute(String name, String source, SamplerOverrideMap overrides) {
+        return beginCompute(name, source, overrides, CustomUniformExpressionManager.empty());
+    }
+
+    public static ProgramBuilder beginCompute(String name, String source, SamplerOverrideMap overrides,
+                                              CustomUniformExpressionManager customUniforms) {
+        return beginCompute(name, source, overrides, customUniforms, Collections.emptySet());
+    }
+
+    public static ProgramBuilder beginCompute(String name, String source, SamplerOverrideMap overrides,
+                                              CustomUniformExpressionManager customUniforms,
+                                              Set<Integer> reservedTextureUnits) {
+        return beginCompute(name, source, overrides, customUniforms, reservedTextureUnits, null, null);
+    }
+
+    public static ProgramBuilder beginCompute(String name, String source, SamplerOverrideMap overrides,
+                                              CustomUniformExpressionManager customUniforms,
+                                              Set<Integer> reservedTextureUnits,
+                                              FrameUpdateNotifier frameUpdateNotifier,
+                                              PackDirectives packDirectives) {
         Objects.requireNonNull(name, "program name");
 
-        GlShader compute = buildShader(ShaderType.COMPUTE, name + ".csh", source);
-        int programId = ProgramCreator.create(name, compute);
-        compute.destroy();
+        if (!OculusRenderSystem.supportsCompute()) {
+            throw new IllegalStateException("Compute shaders are not supported by the active OpenGL context, "
+                + "but shader program " + name + " defines a compute pass.");
+        }
 
-        return new ProgramBuilder(name, programId, overrides);
+        GlShader compute = null;
+        int programId;
+        try {
+            compute = buildShader(ShaderType.COMPUTE, name + ".csh", source);
+            programId = ProgramCreator.create(name, compute);
+        } finally {
+            destroyShader(compute, name);
+        }
+
+        return createOwningProgramBuilder(name, programId, overrides, customUniforms, reservedTextureUnits,
+            true, null, frameUpdateNotifier, packDirectives);
+    }
+
+    private static ProgramBuilder createOwningProgramBuilder(String name, int programId,
+                                                             SamplerOverrideMap overrides,
+                                                             CustomUniformExpressionManager customUniforms,
+                                                             Set<Integer> reservedTextureUnits,
+                                                             boolean discoverActiveUniforms,
+                                                             InputAvailability availability,
+                                                             FrameUpdateNotifier frameUpdateNotifier,
+                                                             PackDirectives packDirectives) {
+        try {
+            return new ProgramBuilder(name, programId, overrides, customUniforms, reservedTextureUnits,
+                discoverActiveUniforms, availability, frameUpdateNotifier, packDirectives);
+        } catch (RuntimeException | Error exception) {
+            deleteFailedProgramHandle(programId, name, exception, "builder construction");
+            throw exception;
+        }
+    }
+
+    private void deleteFailedProgramAfterBuildFailure(Throwable failure, String failurePhase) {
+        if (!ownsProgramHandle) {
+            return;
+        }
+
+        deleteFailedProgramHandle(program, name, failure, failurePhase);
+    }
+
+    private static void deleteFailedProgramHandle(int programId, String programName, Throwable failure,
+                                                  String failurePhase) {
+        if (programId == 0) {
+            return;
+        }
+
+        try {
+            OculusRenderSystem.glDeleteProgram(programId);
+        } catch (RuntimeException | Error cleanupFailure) {
+            suppressCleanupFailure(failure, cleanupFailure);
+            LOGGER.debug("Failed to delete linked program {} after {} failed", programName, failurePhase,
+                cleanupFailure);
+        }
+    }
+
+    private static void suppressCleanupFailure(Throwable failure, Throwable cleanupFailure) {
+        if (cleanupFailure != null && cleanupFailure != failure) {
+            failure.addSuppressed(cleanupFailure);
+        }
     }
 
     private static GlShader buildShader(ShaderType type, String name, String source) {
@@ -133,6 +413,18 @@ public final class ProgramBuilder implements ImageHolder {
             throw ex;
         } catch (RuntimeException ex) {
             throw new ProgramLoadException("Failed to compile " + type + " shader for program " + name, ex);
+        }
+    }
+
+    private static void destroyShader(GlShader shader, String programName) {
+        if (shader == null) {
+            return;
+        }
+
+        try {
+            shader.destroy();
+        } catch (RuntimeException | Error exception) {
+            LOGGER.debug("Failed to destroy compiled shader object for program {}", programName, exception);
         }
     }
 
@@ -191,7 +483,57 @@ public final class ProgramBuilder implements ImageHolder {
         CapturedRenderingState state = CapturedRenderingState.INSTANCE;
 
         if (isSamplerType(glType)) {
+            activeSamplerUniformNames.add(uniformName);
+            activeSamplerUniformTypes.put(uniformName, glType);
+            if ("u_BlockTex".equals(uniformName)) {
+                samplers.addExternalSampler(0, uniformName);
+                return;
+            }
+            if ("u_LightTex".equals(uniformName)) {
+                samplers.addExternalSampler(getLightmapTextureUnit(), uniformName);
+                return;
+            }
+            if (usesWorldLevelSamplers() && !hasTextureInput() && isUnavailableAlbedoFallbackSampler(uniformName)) {
+                samplers.addDynamicSampler(FallbackTextures::getWhiteTexture,
+                    "tex", "texture", "gtexture", "gcolor", "colortex0");
+                return;
+            }
+            if (usesWorldLevelSamplers() && isWorldAlbedoSampler(uniformName)) {
+                samplers.addExternalSampler(0, uniformName);
+                return;
+            }
+            if (usesWorldLevelSamplers() && "lightmap".equals(uniformName)) {
+                if (hasLightmapInput()) {
+                    samplers.addExternalSampler(getLightmapTextureUnit(), uniformName);
+                } else {
+                    samplers.addDynamicSampler(FallbackTextures::getWhiteTexture, uniformName);
+                }
+                return;
+            }
+            if (usesWorldLevelSamplers() && "iris_overlay".equals(uniformName)) {
+                if (availability != null && availability.overlay) {
+                    samplers.addExternalSampler(getOverlayTextureUnit(), uniformName);
+                } else {
+                    samplers.addDynamicSampler(FallbackTextures::getWhiteTexture, uniformName);
+                }
+                return;
+            }
+            if (PBRTextureManager.isPbrSamplerName(uniformName)) {
+                PBRTextureManager.INSTANCE.markPbrSamplerUsed();
+            }
+            if (!shouldAutoBindSampler(uniformName)) {
+                return;
+            }
             samplers.addSampler(uniformName);
+            return;
+        }
+
+        if (isImageType(glType)) {
+            activeImageUniformNames.add(uniformName);
+            return;
+        }
+
+        if (customUniforms.addUniform(uniformName, uniforms)) {
             return;
         }
 
@@ -233,21 +575,37 @@ public final class ProgramBuilder implements ImageHolder {
             case "previousCameraPosition":
                 uniforms.addVec3(uniformName, state::getPreviousCameraPositionVec);
                 break;
+            case "cameraPositionInt":
+                uniforms.addIntVec3(uniformName, state::getCameraPositionInt);
+                break;
+            case "previousCameraPositionInt":
+                uniforms.addIntVec3(uniformName, state::getPreviousCameraPositionInt);
+                break;
+            case "cameraPositionFract":
+                uniforms.addVec3(uniformName, state::getCameraPositionFract);
+                break;
+            case "previousCameraPositionFract":
+                uniforms.addVec3(uniformName, state::getPreviousCameraPositionFract);
+                break;
             case "fogColor":
             case "u_FogColor":
                 if (glType == GL20.GL_FLOAT_VEC3) {
-                    uniforms.addVec3(uniformName, state::getFogColor);
+                    uniforms.addVec3(uniformName, state::getFogColor, state.getFogColorNotifier());
                 } else {
-                    uniforms.addVec4(uniformName, state::getFogColorVec4);
+                    uniforms.addVec4(uniformName, state::getFogColorVec4, state.getFogColorNotifier());
                 }
                 break;
             case "fogStart":
             case "u_FogStart":
-                uniforms.addFloatSupplier(uniformName, GameDataSuppliers.fogStart());
+            case "iris_FogStart":
+                uniforms.addFloatSupplier(uniformName, GameDataSuppliers.fogStart(),
+                    StateUpdateNotifiers.fogStartNotifierWithToggle());
                 break;
             case "fogEnd":
             case "u_FogEnd":
-                uniforms.addFloatSupplier(uniformName, GameDataSuppliers.fogEnd());
+            case "iris_FogEnd":
+                uniforms.addFloatSupplier(uniformName, GameDataSuppliers.fogEnd(),
+                    StateUpdateNotifiers.fogEndNotifierWithToggle());
                 break;
             case "viewWidth":
             case "u_ViewWidth":
@@ -268,6 +626,9 @@ public final class ProgramBuilder implements ImageHolder {
                 break;
             case "inv_aspect_ratio":
                 uniforms.addFloat(uniformName, CustomUniforms::getInverseAspectRatio);
+                break;
+            case "pi":
+                uniforms.addFloat(uniformName, () -> (float) Math.PI);
                 break;
             case "near":
                 uniforms.addFloat(uniformName, state::getNearPlane);
@@ -298,15 +659,17 @@ public final class ProgramBuilder implements ImageHolder {
                 break;
             case "fogMode":
             case "u_FogMode":
-                uniforms.addInt(uniformName, GameDataSuppliers.fogMode());
+                uniforms.addInt(uniformName, GameDataSuppliers.fogMode(),
+                    StateUpdateNotifiers.fogModeNotifierWithToggle());
                 break;
             case "fogDensity":
             case "u_FogDensity":
             case "iris_FogDensity":
-                uniforms.addFloatSupplier(uniformName, GameDataSuppliers.fogDensity());
+                uniforms.addFloatSupplier(uniformName, GameDataSuppliers.fogDensity(),
+                    StateUpdateNotifiers.fogDensityNotifierWithToggle());
                 break;
             case "iris_FogColor":
-                uniforms.addVec4(uniformName, state::getFogColorVec4);
+                uniforms.addVec4(uniformName, state::getFogColorVec4, state.getFogColorNotifier());
                 break;
             case "sunAngle":
                 uniforms.addFloat(uniformName, CelestialUniforms::getSunAngle);
@@ -380,20 +743,26 @@ public final class ProgramBuilder implements ImageHolder {
                 uniforms.addFloat(uniformName, CompatibilityUniforms::getMoonBrightness);
                 break;
             case "shadowFade":
-            case "shdFade":
                 uniforms.addFloat(uniformName, CompatibilityUniforms::getShadowFade);
+                break;
+            case "shdFade":
+                uniforms.addFloat(uniformName, CompatibilityUniforms::getShdFade);
                 break;
             case "blindFactor":
                 uniforms.addFloat(uniformName, CompatibilityUniforms::getBlindFactor);
                 break;
             case "rainStrengthS":
-                uniforms.addFloat(uniformName, CompatibilityUniforms::getRainStrengthS);
+                uniforms.addFloat(uniformName, sharedFrameSmoothedOrFallback(
+                    15.0F, 15.0F, GameplayUniforms::getRainStrength, CompatibilityUniforms::getRainStrengthS));
                 break;
             case "rainStrengthShiningStars":
-                uniforms.addFloat(uniformName, CompatibilityUniforms::getRainStrengthShiningStars);
+                uniforms.addFloat(uniformName, sharedFrameSmoothedOrFallback(
+                    10.0F, 11.0F, GameplayUniforms::getRainStrength,
+                    CompatibilityUniforms::getRainStrengthShiningStars));
                 break;
             case "rainStrengthS2":
-                uniforms.addFloat(uniformName, CompatibilityUniforms::getRainStrengthS2);
+                uniforms.addFloat(uniformName, sharedFrameSmoothedOrFallback(
+                    70.0F, 1.0F, GameplayUniforms::getRainStrength, CompatibilityUniforms::getRainStrengthS2));
                 break;
             case "inDry":
                 uniforms.addFloat(uniformName, CompatibilityUniforms::getInDry);
@@ -423,7 +792,9 @@ public final class ProgramBuilder implements ImageHolder {
                 uniforms.addFloat(uniformName, CompatibilityUniforms::getStarter);
                 break;
             case "frameTimeSmooth":
-                uniforms.addFloat(uniformName, CompatibilityUniforms::getFrameTimeSmooth);
+                uniforms.addFloat(uniformName, sharedFrameSmoothedOrFallback(
+                    5.0F, 5.0F, SystemTimeUniforms.TIMER::getLastFrameTime,
+                    CompatibilityUniforms::getFrameTimeSmooth));
                 break;
             case "eyeBrightnessM":
                 uniforms.addFloat(uniformName, CompatibilityUniforms::getEyeBrightnessMUniform);
@@ -432,13 +803,22 @@ public final class ProgramBuilder implements ImageHolder {
                 uniforms.addFloat(uniformName, CompatibilityUniforms::getEyeBrightnessM2);
                 break;
             case "eyeBrightness":
-                uniforms.addVec2(uniformName, GameplayUniforms::getEyeBrightness);
+                if (glType == GL20.GL_INT_VEC2) {
+                    uniforms.addIntVec2(uniformName, GameplayUniforms::getEyeBrightnessInt);
+                } else {
+                    uniforms.addVec2(uniformName, GameplayUniforms::getEyeBrightness);
+                }
                 break;
             case "eyeBrightnessSmooth":
-                uniforms.addVec2(uniformName, GameplayUniforms::getEyeBrightnessSmooth);
+                if (glType == GL20.GL_INT_VEC2) {
+                    uniforms.addIntVec2(uniformName, GameplayUniforms::getEyeBrightnessSmoothInt);
+                } else {
+                    uniforms.addVec2(uniformName, GameplayUniforms::getEyeBrightnessSmooth);
+                }
                 break;
             case "rainFactor":
-                uniforms.addFloat(uniformName, CompatibilityUniforms::getRainFactor);
+                uniforms.addFloat(uniformName, sharedFrameSmoothedOrFallback(
+                    15.0F, 15.0F, GameplayUniforms::getRainStrength, CompatibilityUniforms::getRainFactor));
                 break;
             case "inSwamp":
                 uniforms.addFloat(uniformName, CompatibilityUniforms::getInSwamp);
@@ -507,7 +887,9 @@ public final class ProgramBuilder implements ImageHolder {
                 uniforms.addFloat(uniformName, GameplayUniforms::getRainStrength);
                 break;
             case "wetness":
-                uniforms.addFloat(uniformName, GameplayUniforms::getWetness);
+                uniforms.addFloat(uniformName, sharedFrameSmoothedOrFallback(
+                    getWetnessHalfLife(), getDrynessHalfLife(), GameplayUniforms::getRainStrength,
+                    GameplayUniforms::getWetness));
                 break;
             case "thunderStrength":
                 uniforms.addFloat(uniformName, GameplayUniforms::getThunderStrength);
@@ -581,28 +963,120 @@ public final class ProgramBuilder implements ImageHolder {
             case "playerBodyVector":
                 uniforms.addVec3(uniformName, GameplayUniforms::getPlayerBodyVector);
                 break;
+            case "currentColorSpace":
+                uniforms.addInt(uniformName, GameplayUniforms::getCurrentColorSpace);
+                break;
             case "entityId":
-                uniforms.addInt(uniformName, state::getCurrentEntity);
+                uniforms.addInt(uniformName, state::getCurrentEntity, state.getEntityIdNotifier());
                 break;
             case "blockEntityId":
-                uniforms.addInt(uniformName, state::getCurrentBlockEntity);
+                uniforms.addInt(uniformName, state::getCurrentBlockEntity, state.getBlockEntityIdNotifier());
+                break;
+            case "heldItemId":
+                uniforms.addInt(uniformName, customUniforms::getHeldItemIdMain);
+                break;
+            case "heldItemId2":
+                uniforms.addInt(uniformName, customUniforms::getHeldItemIdOff);
+                break;
+            case "heldBlockLightValue":
+                uniforms.addInt(uniformName, () -> IdMapUniforms.getHeldBlockLightValueMain(isOldHandLight()));
+                break;
+            case "heldBlockLightValue2":
+                uniforms.addInt(uniformName, IdMapUniforms::getHeldBlockLightValueOff);
+                break;
+            case "currentRenderedItemId":
+                uniforms.addInt(uniformName, customUniforms::getCurrentRenderedItemId,
+                    IdMapUniforms.getCurrentRenderedItemIdNotifier());
+                break;
+            case "atlasSize":
+                if (glType == GL20.GL_INT_VEC2) {
+                    uniforms.addIntVec2(uniformName, GameplayUniforms::getAtlasSize,
+                        StateUpdateNotifiers.bindTextureNotifier);
+                } else {
+                    uniforms.addVec2(uniformName, GameplayUniforms::getAtlasSizeFloat,
+                        StateUpdateNotifiers.bindTextureNotifier);
+                }
+                break;
+            case "gtextureSize":
+                if (glType == GL20.GL_INT_VEC2) {
+                    uniforms.addIntVec2(uniformName, GameplayUniforms::getGtextureSize,
+                        StateUpdateNotifiers.bindTextureNotifier);
+                } else {
+                    uniforms.addVec2(uniformName, GameplayUniforms::getGtextureSizeFloat,
+                        StateUpdateNotifiers.bindTextureNotifier);
+                }
+                break;
+            case "blendFunc":
+                if (glType == GL20.GL_INT_VEC4) {
+                    uniforms.addIntVec4(uniformName, GameplayUniforms::getBlendFunc,
+                        StateUpdateNotifiers.blendFuncNotifier);
+                } else {
+                    uniforms.addVec4(uniformName, GameplayUniforms::getBlendFuncFloat,
+                        StateUpdateNotifiers.blendFuncNotifier);
+                }
+                break;
+            case "entityColor":
+            case "iris_entityColor":
+                uniforms.addVec4(uniformName, GameplayUniforms::getEntityColor,
+                    GameplayUniforms.getEntityColorNotifier());
+                break;
+            case "heavyFog":
+                uniforms.addInt(uniformName, GameplayUniforms::isHeavyFog);
+                break;
+            case "playerMood":
+                uniforms.addFloat(uniformName, GameplayUniforms::getPlayerMood);
+                break;
+            case "maxBlindnessDarkness":
+                uniforms.addFloat(uniformName, GameplayUniforms::getMaxBlindnessDarkness);
                 break;
             case "iris_ModelViewMatrix":
                 uniforms.addMatrix4(uniformName, state::getGbufferModelView);
                 break;
             case "iris_ProjectionMatrix":
-            case "iris_ProjMat":
                 uniforms.addMatrix4(uniformName, state::getGbufferProjection);
+                break;
+            case "iris_ProjMat":
+                uniforms.addMat4f(uniformName, MatrixState::updateProjectionMatrix);
                 break;
             case "u_ModelViewProjectionMatrix":
             case "iris_ModelViewProjectionMatrix":
                 uniforms.addMatrix4(uniformName, state::getModelViewProjection);
                 break;
             case "iris_NormalMatrix":
-                uniforms.addMatrix4(uniformName, state::getModelViewInverse);
+                uniforms.addMatrix4(uniformName, state::getNormalMatrix);
+                break;
+            case "iris_LightmapTextureMatrix":
+                uniforms.addMatrix4(uniformName, BuiltinReplacementUniforms::getLightmapTextureMatrix);
+                break;
+            case "iris_TextureMat":
+                uniforms.addMat4f(uniformName, MatrixState::updateTextureMatrix);
+                break;
+            case "iris_ModelViewMat":
+                uniforms.addMat4f(uniformName, MatrixState::updateModelViewMatrix);
+                break;
+            case "iris_ChunkOffset":
+                uniforms.addVec3(uniformName, BuiltinReplacementUniforms::getChunkOffset);
+                break;
+            case "iris_ColorModulator":
+                uniforms.addVec4(uniformName, BuiltinReplacementUniforms::getColorModulator,
+                    BuiltinReplacementUniforms.getColorModulatorNotifier());
                 break;
             case "iris_ModelOffset":
                 uniforms.addFloat(uniformName, () -> 0.0F);
+                break;
+            case "u_ModelScale":
+                if (glType == GL20.GL_FLOAT_VEC3) {
+                    uniforms.addVec3(uniformName, GameplayUniforms::getTerrainModelScaleVec3);
+                } else {
+                    uniforms.addFloat(uniformName, GameplayUniforms::getTerrainModelScale);
+                }
+                break;
+            case "u_TextureScale":
+                if (glType == GL20.GL_FLOAT_VEC2) {
+                    uniforms.addVec2(uniformName, GameplayUniforms::getTerrainTextureScaleVec2);
+                } else {
+                    uniforms.addFloat(uniformName, GameplayUniforms::getTerrainTextureScale);
+                }
                 break;
             case "iris_LineWidth":
                 uniforms.addFloat(uniformName, () -> 1.0F);
@@ -643,9 +1117,35 @@ public final class ProgramBuilder implements ImageHolder {
             case "ambientLight":
                 uniforms.addFloat(uniformName, WorldInfoUniforms::getAmbientLight);
                 break;
+            case "centerDepthSmooth":
+                break;
             default:
                 LOGGER.warn("Unknown uniform {} in program {}, it will not be updated.", uniformName, this.name);
         }
+    }
+
+    private ProgramUniforms.FloatSupplier sharedFrameSmoothedOrFallback(float halfLifeUp,
+                                                                        float halfLifeDown,
+                                                                        net.oculus.uniforms.FloatSupplier raw,
+                                                                        ProgramUniforms.FloatSupplier fallback) {
+        if (frameUpdateNotifier == null) {
+            return fallback;
+        }
+
+        SmoothedFloat smoothed = new SmoothedFloat(halfLifeUp, halfLifeDown, raw, frameUpdateNotifier);
+        return smoothed::getAsFloat;
+    }
+
+    private float getWetnessHalfLife() {
+        return packDirectives != null ? packDirectives.getWetnessHalfLife() : DEFAULT_WETNESS_HALF_LIFE;
+    }
+
+    private float getDrynessHalfLife() {
+        return packDirectives != null ? packDirectives.getDrynessHalfLife() : DEFAULT_DRYNESS_HALF_LIFE;
+    }
+
+    private boolean isOldHandLight() {
+        return packDirectives == null || packDirectives.isOldHandLight();
     }
 
     private void addFrameCounterUniform(String uniformName, int glType) {
@@ -668,10 +1168,199 @@ public final class ProgramBuilder implements ImageHolder {
         }
     }
 
+    private boolean usesWorldLevelSamplers() {
+        return usesWorldLevelSamplers(name);
+    }
+
+    private static boolean usesWorldLevelSamplers(String programName) {
+        String normalized = programName.toLowerCase(Locale.ROOT);
+        return normalized.startsWith("gbuffers_")
+            || normalized.equals("shadow")
+            || normalized.startsWith("shadow_")
+            || normalized.startsWith("shadow.");
+    }
+
+    private static Set<Integer> reservedTextureUnitsForProgram(String programName, Set<Integer> explicitReserved) {
+        if (!usesWorldLevelSamplers(programName)) {
+            return explicitReserved;
+        }
+
+        Set<Integer> reserved = new HashSet<>(WORLD_RESERVED_TEXTURE_UNITS);
+        if (explicitReserved != null) {
+            reserved.addAll(explicitReserved);
+        }
+        return reserved;
+    }
+
+    private static Set<Integer> textureUnitSet(int... units) {
+        Set<Integer> set = new HashSet<>();
+        for (int unit : units) {
+            set.add(unit);
+        }
+        return Collections.unmodifiableSet(set);
+    }
+
+    private boolean shouldAutoBindSampler(String uniformName) {
+        if (!usesWorldLevelSamplers()) {
+            return true;
+        }
+
+        if (isLowRenderTargetSampler(uniformName)) {
+            return false;
+        }
+        if ("gdepthtex".equals(uniformName) || "depthtex2".equals(uniformName)) {
+            return false;
+        }
+        if (isShadowLevelProgram() && isWorldDepthSampler(uniformName)) {
+            return false;
+        }
+        return true;
+    }
+
+    private boolean isShadowLevelProgram() {
+        return isShadowLevelProgram(name);
+    }
+
+    private static boolean isShadowLevelProgram(String programName) {
+        String normalized = programName.toLowerCase(Locale.ROOT);
+        return normalized.equals("shadow")
+            || normalized.startsWith("shadow_")
+            || normalized.startsWith("shadow.");
+    }
+
+    private static boolean isLowRenderTargetSampler(String samplerName) {
+        return "gcolor".equals(samplerName)
+            || "gdepth".equals(samplerName)
+            || "gnormal".equals(samplerName)
+            || "composite".equals(samplerName)
+            || "gaux0".equals(samplerName)
+            || isColorTextureIndexInRange(samplerName, 0, 3);
+    }
+
+    private static boolean isWorldDepthSampler(String samplerName) {
+        return "depthtex0".equals(samplerName)
+            || "depthtex1".equals(samplerName);
+    }
+
+    private static boolean isColorTextureIndexInRange(String samplerName, int min, int max) {
+        if (!samplerName.startsWith("colortex")) {
+            return false;
+        }
+        try {
+            int index = Integer.parseInt(samplerName.substring("colortex".length()));
+            return index >= min && index <= max;
+        } catch (NumberFormatException ignored) {
+            return false;
+        }
+    }
+
+    private static boolean isWorldAlbedoSampler(String uniformName) {
+        return "tex".equals(uniformName)
+            || "texture".equals(uniformName)
+            || "gtexture".equals(uniformName);
+    }
+
+    private static boolean isUnavailableAlbedoFallbackSampler(String uniformName) {
+        return isWorldAlbedoSampler(uniformName)
+            || "gcolor".equals(uniformName)
+            || "colortex0".equals(uniformName);
+    }
+
+    private boolean hasTextureInput() {
+        return availability == null || availability.texture;
+    }
+
+    private boolean hasLightmapInput() {
+        return availability == null || availability.lightmap;
+    }
+
+    private static int getLightmapTextureUnit() {
+        return Math.max(0, OpenGlHelper.lightmapTexUnit - OpenGlHelper.defaultTexUnit);
+    }
+
+    private static int getOverlayTextureUnit() {
+        return Math.max(0, OpenGlHelper.GL_TEXTURE2 - OpenGlHelper.defaultTexUnit);
+    }
+
     private static boolean isSamplerType(int glType) {
         switch (glType) {
+            case GL20.GL_SAMPLER_1D:
             case GL20.GL_SAMPLER_2D:
+            case GL20.GL_SAMPLER_3D:
+            case GL20.GL_SAMPLER_CUBE:
+            case GL20.GL_SAMPLER_1D_SHADOW:
             case GL20.GL_SAMPLER_2D_SHADOW:
+            case GL30.GL_SAMPLER_BUFFER:
+            case GL30.GL_SAMPLER_CUBE_SHADOW:
+            case GL30.GL_INT_SAMPLER_1D:
+            case GL30.GL_INT_SAMPLER_2D:
+            case GL30.GL_INT_SAMPLER_3D:
+            case GL30.GL_INT_SAMPLER_CUBE:
+            case GL30.GL_INT_SAMPLER_2D_RECT:
+            case GL30.GL_INT_SAMPLER_1D_ARRAY:
+            case GL30.GL_INT_SAMPLER_2D_ARRAY:
+            case GL30.GL_INT_SAMPLER_BUFFER:
+            case GL30.GL_UNSIGNED_INT_SAMPLER_1D:
+            case GL30.GL_UNSIGNED_INT_SAMPLER_2D:
+            case GL30.GL_UNSIGNED_INT_SAMPLER_3D:
+            case GL30.GL_UNSIGNED_INT_SAMPLER_CUBE:
+            case GL30.GL_UNSIGNED_INT_SAMPLER_2D_RECT:
+            case GL30.GL_UNSIGNED_INT_SAMPLER_1D_ARRAY:
+            case GL30.GL_UNSIGNED_INT_SAMPLER_2D_ARRAY:
+            case GL30.GL_UNSIGNED_INT_SAMPLER_BUFFER:
+            case GL30.GL_SAMPLER_1D_ARRAY:
+            case GL30.GL_SAMPLER_2D_ARRAY:
+            case GL30.GL_SAMPLER_1D_ARRAY_SHADOW:
+            case GL30.GL_SAMPLER_2D_ARRAY_SHADOW:
+            case GL31.GL_SAMPLER_2D_RECT:
+            case GL31.GL_SAMPLER_2D_RECT_SHADOW:
+            case GL32.GL_SAMPLER_2D_MULTISAMPLE:
+            case GL32.GL_INT_SAMPLER_2D_MULTISAMPLE:
+            case GL32.GL_UNSIGNED_INT_SAMPLER_2D_MULTISAMPLE:
+            case GL32.GL_SAMPLER_2D_MULTISAMPLE_ARRAY:
+            case GL32.GL_INT_SAMPLER_2D_MULTISAMPLE_ARRAY:
+            case GL32.GL_UNSIGNED_INT_SAMPLER_2D_MULTISAMPLE_ARRAY:
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    private static boolean isImageType(int glType) {
+        switch (glType) {
+            case GL42.GL_IMAGE_1D:
+            case GL42.GL_IMAGE_2D:
+            case GL42.GL_IMAGE_3D:
+            case GL42.GL_IMAGE_2D_RECT:
+            case GL42.GL_IMAGE_CUBE:
+            case GL42.GL_IMAGE_BUFFER:
+            case GL42.GL_IMAGE_1D_ARRAY:
+            case GL42.GL_IMAGE_2D_ARRAY:
+            case GL42.GL_IMAGE_CUBE_MAP_ARRAY:
+            case GL42.GL_IMAGE_2D_MULTISAMPLE:
+            case GL42.GL_IMAGE_2D_MULTISAMPLE_ARRAY:
+            case GL42.GL_INT_IMAGE_1D:
+            case GL42.GL_INT_IMAGE_2D:
+            case GL42.GL_INT_IMAGE_3D:
+            case GL42.GL_INT_IMAGE_2D_RECT:
+            case GL42.GL_INT_IMAGE_CUBE:
+            case GL42.GL_INT_IMAGE_BUFFER:
+            case GL42.GL_INT_IMAGE_1D_ARRAY:
+            case GL42.GL_INT_IMAGE_2D_ARRAY:
+            case GL42.GL_INT_IMAGE_CUBE_MAP_ARRAY:
+            case GL42.GL_INT_IMAGE_2D_MULTISAMPLE:
+            case GL42.GL_INT_IMAGE_2D_MULTISAMPLE_ARRAY:
+            case GL42.GL_UNSIGNED_INT_IMAGE_1D:
+            case GL42.GL_UNSIGNED_INT_IMAGE_2D:
+            case GL42.GL_UNSIGNED_INT_IMAGE_3D:
+            case GL42.GL_UNSIGNED_INT_IMAGE_2D_RECT:
+            case GL42.GL_UNSIGNED_INT_IMAGE_CUBE:
+            case GL42.GL_UNSIGNED_INT_IMAGE_BUFFER:
+            case GL42.GL_UNSIGNED_INT_IMAGE_1D_ARRAY:
+            case GL42.GL_UNSIGNED_INT_IMAGE_2D_ARRAY:
+            case GL42.GL_UNSIGNED_INT_IMAGE_CUBE_MAP_ARRAY:
+            case GL42.GL_UNSIGNED_INT_IMAGE_2D_MULTISAMPLE:
+            case GL42.GL_UNSIGNED_INT_IMAGE_2D_MULTISAMPLE_ARRAY:
                 return true;
             default:
                 return false;
@@ -679,11 +1368,21 @@ public final class ProgramBuilder implements ImageHolder {
     }
 
     public Program build() {
-        return new Program(name, program, uniforms.build(), samplers.build(), images.build());
+        try {
+            return new Program(name, program, uniforms.build(), samplers.build(), images.build(), ownsProgramHandle);
+        } catch (RuntimeException | Error exception) {
+            deleteFailedProgramAfterBuildFailure(exception, "program wrapper construction");
+            throw exception;
+        }
     }
 
     public ComputeProgram buildCompute() {
-        return new ComputeProgram(name, program, uniforms.build(), samplers.build(), images.build());
+        try {
+            return new ComputeProgram(name, program, uniforms.build(), samplers.build(), images.build());
+        } catch (RuntimeException | Error exception) {
+            deleteFailedProgramAfterBuildFailure(exception, "compute wrapper construction");
+            throw exception;
+        }
     }
 
     // --- Sampler helpers --------------------------------------------------
@@ -696,16 +1395,39 @@ public final class ProgramBuilder implements ImageHolder {
         return samplers.hasSampler(name);
     }
 
+    public Set<String> getActiveSamplerUniformNames() {
+        if (activeSamplerUniformNames == null || activeSamplerUniformNames.isEmpty()) {
+            return Collections.emptySet();
+        }
+        return Collections.unmodifiableSet(activeSamplerUniformNames);
+    }
+
+    public int getActiveSamplerUniformType(String name) {
+        if (name == null || activeSamplerUniformTypes == null) {
+            return 0;
+        }
+        Integer type = activeSamplerUniformTypes.get(name);
+        return type == null ? 0 : type.intValue();
+    }
+
     public boolean addDefaultSampler(IntSupplier sampler, String... names) {
         return samplers.addDefaultSampler(sampler, names);
+    }
+
+    public boolean addDefaultSampler(TextureBinding binding, String... names) {
+        return samplers.addDefaultSampler(binding, names);
     }
 
     public boolean addDynamicSampler(IntSupplier sampler, String... names) {
         return samplers.addDynamicSampler(sampler, names);
     }
 
-    public boolean addDynamicSampler(IntSupplier sampler, Runnable notifier, String... names) {
+    public boolean addDynamicSampler(IntSupplier sampler, ValueUpdateNotifier notifier, String... names) {
         return samplers.addDynamicSampler(sampler, notifier, names);
+    }
+
+    public void overrideSamplerBinding(String samplerName, TextureBinding binding) {
+        samplers.overrideBinding(samplerName, binding);
     }
 
     // --- Image helpers ----------------------------------------------------
@@ -713,6 +1435,14 @@ public final class ProgramBuilder implements ImageHolder {
     @Override
     public boolean hasImage(String name) {
         return images.hasImage(name);
+    }
+
+    @Override
+    public Set<String> getActiveImageNames() {
+        if (activeImageUniformNames == null || activeImageUniformNames.isEmpty()) {
+            return Collections.emptySet();
+        }
+        return Collections.unmodifiableSet(activeImageUniformNames);
     }
 
     @Override

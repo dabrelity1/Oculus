@@ -2,6 +2,8 @@ package net.oculus.shaderpack.option.values;
 
 import java.util.Map;
 
+import net.oculus.shaderpack.option.MergedBooleanOption;
+import net.oculus.shaderpack.option.MergedStringOption;
 import net.oculus.shaderpack.option.OptionSet;
 
 public class MutableOptionValues extends OptionValues {
@@ -14,19 +16,37 @@ public class MutableOptionValues extends OptionValues {
     }
 
     public void setBooleanValue(String name, boolean value) {
-        values.put(name, Boolean.toString(value));
+        MergedBooleanOption option = optionSet.getBooleanOptions().get(name);
+        if (option == null) {
+            return;
+        }
+
+        if (value == option.getOption().getDefaultValue()) {
+            values.remove(name);
+        } else {
+            values.put(name, Boolean.toString(value));
+        }
     }
 
     public void setStringValue(String name, String value) {
-        values.put(name, value);
+        MergedStringOption option = optionSet.getStringOptions().get(name);
+        if (option == null) {
+            return;
+        }
+
+        if (option.getOption().getDefaultValue().equals(value)) {
+            values.remove(name);
+        } else {
+            values.put(name, value);
+        }
     }
 
     public void setFloatValue(String name, float value) {
-        values.put(name, Float.toString(value));
+        setStringValue(name, Float.toString(value));
     }
 
     public void addAll(Map<String, String> other) {
-        values.putAll(other);
+        super.addAll(other);
     }
 
     public void clearAll() {

@@ -182,13 +182,10 @@ public final class ProgramDirectives {
     }
 
     private static int[] parseDigitList(String digitListString) {
-        if (digitListString == null || digitListString.trim().isEmpty()) {
-            return new int[] {0};
-        }
         String[] tokens = digitListString.split(",");
         int[] result = new int[tokens.length];
         for (int i = 0; i < tokens.length; i++) {
-            result[i] = Integer.parseInt(tokens[i].trim());
+            result[i] = Integer.parseInt(tokens[i]);
         }
         return result;
     }

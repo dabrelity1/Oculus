@@ -7,13 +7,14 @@ import org.lwjgl.BufferUtils;
 import org.lwjgl.opengl.GL11;
 
 /**
- * Caches access to the OpenGL model-view and projection matrices for shader uniforms.
+ * Caches access to the OpenGL model-view, projection, and texture matrices for shader uniforms.
  * LWJGL 2 only exposes these through glGetFloat, so we reuse shared buffers to avoid
  * per-frame allocations while keeping the data accessible to callers.
  */
 public final class MatrixState {
     private static final FloatBuffer MODEL_VIEW = BufferUtils.createFloatBuffer(16);
     private static final FloatBuffer PROJECTION = BufferUtils.createFloatBuffer(16);
+    private static final FloatBuffer TEXTURE = BufferUtils.createFloatBuffer(16);
 
     private MatrixState() {
     }
@@ -30,5 +31,12 @@ public final class MatrixState {
         GL11.glGetFloat(GL11.GL_PROJECTION_MATRIX, PROJECTION);
         ((Buffer) PROJECTION).rewind();
         return PROJECTION;
+    }
+
+    public static FloatBuffer updateTextureMatrix() {
+        ((Buffer) TEXTURE).clear();
+        GL11.glGetFloat(GL11.GL_TEXTURE_MATRIX, TEXTURE);
+        ((Buffer) TEXTURE).rewind();
+        return TEXTURE;
     }
 }

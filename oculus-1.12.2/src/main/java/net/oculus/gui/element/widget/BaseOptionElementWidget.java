@@ -160,6 +160,12 @@ public abstract class BaseOptionElementWidget<T extends OptionMenuElement> exten
         if (key != null && I18n.hasKey(key)) {
             return Optional.of(new TextComponentTranslation(key));
         }
+        ITextComponent shaderPackText = this.screen != null
+            ? GuiUtil.translateShaderPack(this.screen.getCurrentPack(), key)
+            : null;
+        if (shaderPackText != null) {
+            return Optional.of(shaderPackText);
+        }
         return Optional.empty();
     }
 

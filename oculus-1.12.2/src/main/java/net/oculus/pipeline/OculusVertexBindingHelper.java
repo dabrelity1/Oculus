@@ -25,7 +25,7 @@ public final class OculusVertexBindingHelper {
                 maybeAddAttribute(bindings, format, OculusChunkShaderBindingPoints.NORMAL, OculusChunkMeshAttributes.NORMAL);
                 maybeAddAttribute(bindings, format, OculusChunkShaderBindingPoints.TANGENT, OculusChunkMeshAttributes.TANGENT);
                 maybeAddAttribute(bindings, format, OculusChunkShaderBindingPoints.MID_UV, OculusChunkMeshAttributes.MID_UV);
-                maybeAddAttribute(bindings, format, OculusChunkShaderBindingPoints.MATERIAL, OculusChunkMeshAttributes.MATERIAL);
+                maybeAddAttribute(bindings, format, OculusChunkShaderBindingPoints.BLOCK_ID, OculusChunkMeshAttributes.MATERIAL);
                 maybeAddAttribute(bindings, format, OculusChunkShaderBindingPoints.MID_BLOCK, OculusChunkMeshAttributes.MID_BLOCK);
 
                 return bindings.toArray(new GlVertexAttributeBinding[0]);

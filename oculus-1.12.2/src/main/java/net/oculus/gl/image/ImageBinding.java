@@ -22,6 +22,12 @@ public final class ImageBinding {
     }
 
     public void update() {
-        OculusRenderSystem.bindImageTexture(imageUnit, textureId.getAsInt(), 0, true, 0, GL15.GL_READ_WRITE, internalFormat);
+        OculusRenderSystem.bindImageTexture(imageUnit, textureId.getAsInt(), 0, true, 0,
+            GL15.GL_READ_WRITE, internalFormat);
+    }
+
+    public void unbind() {
+        OculusRenderSystem.bindImageTexture(imageUnit, 0, 0, true, 0,
+            GL15.GL_READ_WRITE, internalFormat);
     }
 }

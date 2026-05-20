@@ -15,6 +15,7 @@ public final class CelestialUniforms {
     private static final float[] SUN_POSITION = new float[3];
     private static final float[] MOON_POSITION = new float[3];
     private static final float[] SHADOW_LIGHT = new float[3];
+    private static final float[] SHADOW_LIGHT_WORLD = new float[3];
     private static final float[] UP_POSITION = new float[3];
 
     private static float sunPathRotation;
@@ -24,6 +25,10 @@ public final class CelestialUniforms {
 
     public static void configure(PackDirectives directives) {
         sunPathRotation = directives != null ? directives.getSunPathRotation() : 0.0F;
+    }
+
+    public static float getSunPathRotation() {
+        return sunPathRotation;
     }
 
     public static float getSunAngle() {
@@ -59,6 +64,10 @@ public final class CelestialUniforms {
         return SHADOW_LIGHT;
     }
 
+    public static float[] getShadowLightPositionInWorldSpace() {
+        return getCelestialPositionInWorldSpace(isDay() ? 100.0F : -100.0F, SHADOW_LIGHT_WORLD);
+    }
+
     public static float[] getUpPosition() {
         float[] matrix = copyModelView();
         applyRotationY(matrix, -90.0F);
@@ -72,6 +81,15 @@ public final class CelestialUniforms {
         applyRotationZ(matrix, sunPathRotation);
         applyRotationX(matrix, getSkyAngle() * 360.0F);
         MatrixTransforms.transform(matrix, 0.0F, y, 0.0F, 0.0F, target);
+        return target;
+    }
+
+    private static float[] getCelestialPositionInWorldSpace(float y, float[] target) {
+        MatrixMath.setIdentity(WORK_MATRIX);
+        applyRotationY(WORK_MATRIX, -90.0F);
+        applyRotationZ(WORK_MATRIX, sunPathRotation);
+        applyRotationX(WORK_MATRIX, getSkyAngle() * 360.0F);
+        MatrixTransforms.transform(WORK_MATRIX, 0.0F, y, 0.0F, 0.0F, target);
         return target;
     }
 

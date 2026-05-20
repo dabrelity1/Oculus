@@ -107,9 +107,36 @@ processResources {
     }
 }
 
+jar {
+    manifest {
+        attributes(
+            "FMLCorePlugin": "net.oculus.mixins.OculusMixinLoader",
+            "FMLCorePluginContainsFMLMod": "true",
+            "ForceLoadAsMod": "true"
+        )
+    }
+}
+
 tasks.getByName("runClient") {
-    jvmArgs "-Dmixin.debug.verbose=true", "-Dmixin.debug.export=true", "-Dmixin.configs=oculus.mixins.json"
-    executable = new File("C:/Program Files/Eclipse Adoptium/jdk-8.0.472.8-hotspot/bin/java.exe")
+    jvmArgs "-Dmixin.debug.verbose=true", "-Dmixin.debug.export=true"
+
+    ["oculus.validation.autoJoinWorld", "oculus.validation.exitAfterWorldTicks", "oculus.validation.pbrTextures", "oculus.validation.screenshotWorldTick", "oculus.validation.inventoryScreenshotWorldTick", "oculus.validation.dumpRenderTargets", "oculus.validation.dumpRenderTargetsWorldTick", "oculus.validation.thirdPersonView", "oculus.validation.worldTime", "oculus.validation.shaderPack"].each { propertyName ->
+        def propertyValue = System.getProperty(propertyName)
+        if (propertyValue != null) {
+            jvmArgs "-D${propertyName}=${propertyValue}"
+        }
+    }
+
+    def javaHome = System.getenv("JAVA_HOME")
+    if (javaHome) {
+        def candidate = new File(javaHome, "bin/java")
+        if (!candidate.exists()) {
+            candidate = new File(javaHome, "bin/java.exe")
+        }
+        if (candidate.exists()) {
+            executable = candidate.absolutePath
+        }
+    }
 }
 
 // Fix asset download - ForgeGradle 2.3 uses deprecated HTTP URL (http://resources.download.minecraft.net)
@@ -120,13 +147,13 @@ task downloadAssetsHttps {
     def assetsDir = new File(gradle.gradleUserHomeDir, "caches/minecraft/assets")
     def objectsDir = new File(assetsDir, "objects")
     def indexesDir = new File(assetsDir, "indexes")
-    
+
     outputs.dir(assetsDir)
-    
+
     doLast {
         objectsDir.mkdirs()
         indexesDir.mkdirs()
-        
+
         // Get asset index file
         def indexFile = new File(indexesDir, "1.12.json")
         if (!indexFile.exists()) {
@@ -135,40 +162,40 @@ task downloadAssetsHttps {
             indexFile.parentFile.mkdirs()
             indexFile.text = new URL(indexUrl).text
         }
-        
+
         // Parse asset index
         def index = new JsonSlurper().parseText(indexFile.text)
         def objects = index.objects
-        
+
         def downloadCount = 0
         def skipCount = 0
         def failCount = 0
-        
+
         objects.each { name, info ->
             def hash = info.hash
             def prefix = hash.substring(0, 2)
             def targetDir = new File(objectsDir, prefix)
             def targetFile = new File(targetDir, hash)
-            
+
             if (targetFile.exists() && targetFile.length() == info.size) {
                 skipCount++
                 return
             }
-            
+
             targetDir.mkdirs()
-            
+
             def assetUrl = "https://resources.download.minecraft.net/${prefix}/${hash}"
-            
+
             try {
                 def connection = new URL(assetUrl).openConnection()
                 connection.connectTimeout = 10000
                 connection.readTimeout = 30000
-                
+
                 targetFile.withOutputStream { out ->
                     out << connection.inputStream
                 }
                 downloadCount++
-                
+
                 if (downloadCount % 100 == 0) {
                     println "Downloaded ${downloadCount} assets..."
                 }
@@ -179,7 +206,7 @@ task downloadAssetsHttps {
                 }
             }
         }
-        
+
         println "Asset download complete: ${downloadCount} downloaded, ${skipCount} cached, ${failCount} failed"
     }
 }
@@ -187,10 +214,3 @@ task downloadAssetsHttps {
 // Replace the original getAssets task with our HTTPS version
 tasks.getAssets.enabled = false
 tasks.makeStart.dependsOn downloadAssetsHttps
-
-tasks.withType(Test) {
-    enabled = false
-}
-
-compileTestJava.enabled = false
-processTestResources.enabled = false

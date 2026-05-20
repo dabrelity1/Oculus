@@ -12,15 +12,10 @@ public final class ComputeDirectiveParser {
     public static void setComputeWorkGroups(ComputeSource source, ConstDirective directive) {
         String value = directive.getValue();
         if (!value.startsWith("ivec3")) {
-            Oculus.LOGGER.error("Failed to process {}: value was not ivec3", directive);
-            return;
+            Oculus.LOGGER.error("Failed to process {}: value was not a valid ivec3 constructor", directive);
         }
 
-        String args = stripConstructor(value, "ivec3");
-        String[] parts = splitArgs(args, 3, directive);
-        if (parts == null) {
-            return;
-        }
+        String[] parts = parseConstructorArgs(directive, "ivec3", 3);
 
         try {
             source.setWorkGroups(new Vector3i(
@@ -36,15 +31,10 @@ public final class ComputeDirectiveParser {
     public static void setComputeWorkGroupsRelative(ComputeSource source, ConstDirective directive) {
         String value = directive.getValue();
         if (!value.startsWith("vec2")) {
-            Oculus.LOGGER.error("Failed to process {}: value was not vec2", directive);
-            return;
+            Oculus.LOGGER.error("Failed to process {}: value was not a valid vec2 constructor", directive);
         }
 
-        String args = stripConstructor(value, "vec2");
-        String[] parts = splitArgs(args, 2, directive);
-        if (parts == null) {
-            return;
-        }
+        String[] parts = parseConstructorArgs(directive, "vec2", 2);
 
         try {
             source.setWorkGroupRelative(new Vector2f(
@@ -56,22 +46,19 @@ public final class ComputeDirectiveParser {
         }
     }
 
-    private static String stripConstructor(String value, String keyword) {
-        String args = value.substring(keyword.length()).trim();
+    private static String[] parseConstructorArgs(ConstDirective directive, String constructor, int expected) {
+        String args = directive.getValue().substring(constructor.length()).trim();
         if (!args.startsWith("(") || !args.endsWith(")")) {
-            throw new IllegalArgumentException("Malformed constructor: " + value);
+            Oculus.LOGGER.error("Failed to process {}: value was not a valid {} constructor", directive, constructor);
         }
-        return args.substring(1, args.length() - 1);
-    }
 
-    private static String[] splitArgs(String args, int expected, ConstDirective directive) {
-        String[] parts = args.split(",");
-        if (parts.length != expected) {
-            Oculus.LOGGER.error("Failed to process {}: expected {} args, got {}", directive, expected, parts.length);
-            return null;
-        }
+        String[] parts = args.substring(1, args.length() - 1).split(",");
         for (int i = 0; i < parts.length; i++) {
             parts[i] = parts[i].trim();
+        }
+        if (parts.length != expected) {
+            Oculus.LOGGER.error("Failed to process {}: expected {} arguments to a {} constructor, got {}",
+                directive, expected, constructor, parts.length);
         }
         return parts;
     }

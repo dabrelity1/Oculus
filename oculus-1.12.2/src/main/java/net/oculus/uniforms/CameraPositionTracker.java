@@ -3,6 +3,7 @@ package net.oculus.uniforms;
 import java.util.Arrays;
 
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.renderer.ActiveRenderInfo;
 import net.minecraft.entity.Entity;
 import net.minecraft.util.math.Vec3d;
 
@@ -43,21 +44,11 @@ final class CameraPositionTracker {
         System.arraycopy(current, 0, previous, 0, current.length);
 
         Vec3d unshifted = getUnshiftedCameraPosition(partialTicks);
-        if (unshifted == null) {
-            Arrays.fill(current, 0.0);
-            farPlane = 0.0F;
-            return;
-        }
+        updateCurrent(unshifted);
+    }
 
-        current[0] = unshifted.x + shift[0];
-        current[1] = unshifted.y + shift[1];
-        current[2] = unshifted.z + shift[2];
-
-        updateShift(unshifted);
-        lastUnshifted[0] = unshifted.x;
-        lastUnshifted[1] = unshifted.y;
-        lastUnshifted[2] = unshifted.z;
-        farPlane = computeFarPlane();
+    void updateFromActiveRenderInfo(float partialTicks) {
+        updateCurrent(getActiveRenderCameraPosition(partialTicks));
     }
 
     double[] getCurrent() {
@@ -91,10 +82,43 @@ final class CameraPositionTracker {
             return null;
         }
 
-        double x = entity.lastTickPosX + (entity.posX - entity.lastTickPosX) * partialTicks;
-        double y = entity.lastTickPosY + (entity.posY - entity.lastTickPosY) * partialTicks;
-        double z = entity.lastTickPosZ + (entity.posZ - entity.lastTickPosZ) * partialTicks;
-        return new Vec3d(x, y, z);
+        return entity.getPositionEyes(partialTicks);
+    }
+
+    private Vec3d getActiveRenderCameraPosition(float partialTicks) {
+        Minecraft mc = Minecraft.getMinecraft();
+        if (mc == null) {
+            return null;
+        }
+
+        Entity entity = mc.getRenderViewEntity();
+        if (entity == null) {
+            return null;
+        }
+
+        try {
+            return ActiveRenderInfo.projectViewFromEntity(entity, partialTicks);
+        } catch (RuntimeException ignored) {
+            return getUnshiftedCameraPosition(partialTicks);
+        }
+    }
+
+    private void updateCurrent(Vec3d unshifted) {
+        if (unshifted == null) {
+            Arrays.fill(current, 0.0);
+            farPlane = 0.0F;
+            return;
+        }
+
+        current[0] = unshifted.x + shift[0];
+        current[1] = unshifted.y + shift[1];
+        current[2] = unshifted.z + shift[2];
+
+        updateShift(unshifted);
+        lastUnshifted[0] = unshifted.x;
+        lastUnshifted[1] = unshifted.y;
+        lastUnshifted[2] = unshifted.z;
+        farPlane = computeFarPlane();
     }
 
     private void updateShift(Vec3d currentUnshifted) {

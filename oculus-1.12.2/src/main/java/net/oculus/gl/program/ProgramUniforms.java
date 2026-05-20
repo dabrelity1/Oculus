@@ -26,30 +26,49 @@ public final class ProgramUniforms {
 
     private static ProgramUniforms active;
 
-    private final String programName;
     private final List<UniformBinding> bindings;
 
-    private ProgramUniforms(String programName, List<UniformBinding> bindings) {
-        this.programName = programName;
+    private ProgramUniforms(List<UniformBinding> bindings) {
         this.bindings = bindings;
     }
 
     public void update() {
-        if (active != null && active != this) {
-            active.removeListeners();
-        }
+        Throwable previousCleanupFailure = cleanupActiveBeforeUpdate();
 
         active = this;
-        attachListeners();
-        for (UniformBinding binding : bindings) {
-            binding.upload();
+        try {
+            attachListeners();
+            for (UniformBinding binding : bindings) {
+                binding.upload();
+            }
+        } catch (RuntimeException exception) {
+            suppressCleanupFailure(exception, previousCleanupFailure);
+            cleanupAfterFailedUpdate(exception);
+            throw exception;
+        } catch (Error error) {
+            suppressCleanupFailure(error, previousCleanupFailure);
+            cleanupAfterFailedUpdate(error);
+            throw error;
         }
+        rethrowCleanupFailure(previousCleanupFailure);
     }
 
     public static void clearActiveUniforms() {
-        if (active != null) {
-            active.removeListeners();
-            active = null;
+        ProgramUniforms current = active;
+        if (current != null) {
+            Throwable failure = null;
+            try {
+                failure = runCleanup(failure, current::removeListeners);
+            } finally {
+                active = null;
+            }
+            rethrowCleanupFailure(failure);
+        }
+    }
+
+    static void clearActiveUniforms(ProgramUniforms uniforms) {
+        if (active == uniforms) {
+            clearActiveUniforms();
         }
     }
 
@@ -58,38 +77,31 @@ public final class ProgramUniforms {
     }
 
     private static final class UniformBinding {
-        private final String programName;
-        private final String uniformName;
         private final int location;
         private final UniformUpdater updater;
         private final ValueUpdateNotifier notifier;
+        private final Runnable listener;
 
-        private UniformBinding(String programName, String uniformName, int location, UniformUpdater updater,
-                                ValueUpdateNotifier notifier) {
-            this.programName = programName;
-            this.uniformName = uniformName;
+        private UniformBinding(int location, UniformUpdater updater, ValueUpdateNotifier notifier) {
             this.location = location;
             this.updater = updater;
             this.notifier = notifier;
+            this.listener = notifier == null ? null : this::upload;
         }
 
         private void upload() {
-            try {
-                updater.upload(location);
-            } catch (RuntimeException ex) {
-                LOGGER.warn("Failed to upload uniform {} for program {}", uniformName, programName, ex);
-            }
+            updater.upload(location);
         }
 
         private void attachListener() {
             if (notifier != null) {
-                notifier.setListener(() -> upload());
+                notifier.setListener(listener);
             }
         }
 
         private void detachListener() {
             if (notifier != null) {
-                notifier.setListener(null);
+                notifier.removeListener(listener);
             }
         }
     }
@@ -128,7 +140,7 @@ public final class ProgramUniforms {
                 return this;
             }
 
-            bindings.add(new UniformBinding(programName, uniformName, location, updater, notifier));
+            bindings.add(new UniformBinding(location, updater, notifier));
             return this;
         }
 
@@ -138,13 +150,17 @@ public final class ProgramUniforms {
         }
 
         public Builder addFloatSupplier(String uniformName, Supplier<Float> supplier) {
+            return addFloatSupplier(uniformName, supplier, null);
+        }
+
+        public Builder addFloatSupplier(String uniformName, Supplier<Float> supplier, ValueUpdateNotifier notifier) {
             Objects.requireNonNull(supplier, "supplier");
             return register(uniformName, location -> {
                 Float value = supplier.get();
                 if (value != null) {
                     GL20.glUniform1f(location, value);
                 }
-            });
+            }, notifier);
         }
 
         public Builder addInt(String uniformName, IntSupplier supplier) {
@@ -157,16 +173,69 @@ public final class ProgramUniforms {
             return register(uniformName, location -> GL20.glUniform1i(location, supplier.getAsInt()), notifier);
         }
 
+        public Builder addIntVec2(String uniformName, Supplier<int[]> supplier) {
+            return addIntVec2(uniformName, supplier, null);
+        }
+
+        public Builder addIntVec2(String uniformName, Supplier<int[]> supplier, ValueUpdateNotifier notifier) {
+            Objects.requireNonNull(supplier, "supplier");
+            return register(uniformName, location -> {
+                int[] values = supplier.get();
+                if (values == null || values.length < 2) {
+                    return;
+                }
+                GL20.glUniform2i(location, values[0], values[1]);
+            }, notifier);
+        }
+
+        public Builder addIntVec3(String uniformName, Supplier<int[]> supplier) {
+            Objects.requireNonNull(supplier, "supplier");
+            return register(uniformName, location -> {
+                int[] values = supplier.get();
+                if (values == null || values.length < 3) {
+                    return;
+                }
+                GL20.glUniform3i(location, values[0], values[1], values[2]);
+            });
+        }
+
+        public Builder addIntVec4(String uniformName, Supplier<int[]> supplier) {
+            return addIntVec4(uniformName, supplier, null);
+        }
+
+        public Builder addIntVec4(String uniformName, Supplier<int[]> supplier, ValueUpdateNotifier notifier) {
+            Objects.requireNonNull(supplier, "supplier");
+            return register(uniformName, location -> {
+                int[] values = supplier.get();
+                if (values == null || values.length < 4) {
+                    return;
+                }
+                GL20.glUniform4i(location, values[0], values[1], values[2], values[3]);
+            }, notifier);
+        }
+
         public Builder addVec2(String uniformName, Supplier<float[]> supplier) {
-            return registerVecUniform(uniformName, supplier, 2);
+            return addVec2(uniformName, supplier, null);
+        }
+
+        public Builder addVec2(String uniformName, Supplier<float[]> supplier, ValueUpdateNotifier notifier) {
+            return registerVecUniform(uniformName, supplier, 2, notifier);
         }
 
         public Builder addVec3(String uniformName, Supplier<float[]> supplier) {
-            return registerVecUniform(uniformName, supplier, 3);
+            return addVec3(uniformName, supplier, null);
+        }
+
+        public Builder addVec3(String uniformName, Supplier<float[]> supplier, ValueUpdateNotifier notifier) {
+            return registerVecUniform(uniformName, supplier, 3, notifier);
         }
 
         public Builder addVec4(String uniformName, Supplier<float[]> supplier) {
-            return registerVecUniform(uniformName, supplier, 4);
+            return addVec4(uniformName, supplier, null);
+        }
+
+        public Builder addVec4(String uniformName, Supplier<float[]> supplier, ValueUpdateNotifier notifier) {
+            return registerVecUniform(uniformName, supplier, 4, notifier);
         }
 
         public Builder addMatrix4(String uniformName, Supplier<float[]> supplier) {
@@ -225,6 +294,11 @@ public final class ProgramUniforms {
         }
 
         private Builder registerVecUniform(String uniformName, Supplier<float[]> supplier, int componentCount) {
+            return registerVecUniform(uniformName, supplier, componentCount, null);
+        }
+
+        private Builder registerVecUniform(String uniformName, Supplier<float[]> supplier, int componentCount,
+                                           ValueUpdateNotifier notifier) {
             Objects.requireNonNull(supplier, "supplier");
             return register(uniformName, location -> {
                 float[] values = supplier.get();
@@ -245,7 +319,7 @@ public final class ProgramUniforms {
                     default:
                         throw new IllegalArgumentException("Unsupported vector size: " + componentCount);
                 }
-            });
+            }, notifier);
         }
 
         private int findLocation(String uniformName) {
@@ -257,7 +331,7 @@ public final class ProgramUniforms {
         }
 
         public ProgramUniforms build() {
-            return new ProgramUniforms(programName, Collections.unmodifiableList(new ArrayList<>(bindings)));
+            return new ProgramUniforms(Collections.unmodifiableList(new ArrayList<>(bindings)));
         }
     }
 
@@ -268,8 +342,58 @@ public final class ProgramUniforms {
     }
 
     private void removeListeners() {
+        Throwable failure = null;
         for (UniformBinding binding : bindings) {
-            binding.detachListener();
+            failure = runCleanup(failure, binding::detachListener);
+        }
+        rethrowCleanupFailure(failure);
+    }
+
+    private static Throwable runCleanup(Throwable failure, Runnable cleanup) {
+        try {
+            cleanup.run();
+        } catch (RuntimeException | Error exception) {
+            if (failure != null) {
+                suppressCleanupFailure(failure, exception);
+                return failure;
+            }
+            return exception;
+        }
+        return failure;
+    }
+
+    private static void rethrowCleanupFailure(Throwable failure) {
+        if (failure == null) {
+            return;
+        }
+        if (failure instanceof RuntimeException) {
+            throw (RuntimeException) failure;
+        }
+        if (failure instanceof Error) {
+            throw (Error) failure;
+        }
+        throw new IllegalStateException(failure);
+    }
+
+    private static Throwable cleanupActiveBeforeUpdate() {
+        ProgramUniforms current = active;
+        if (current == null) {
+            return null;
+        }
+        return runCleanup(null, current::removeListeners);
+    }
+
+    private static void cleanupAfterFailedUpdate(Throwable failure) {
+        try {
+            clearActiveUniforms();
+        } catch (RuntimeException | Error cleanupFailure) {
+            suppressCleanupFailure(failure, cleanupFailure);
+        }
+    }
+
+    private static void suppressCleanupFailure(Throwable failure, Throwable cleanupFailure) {
+        if (cleanupFailure != null && cleanupFailure != failure) {
+            failure.addSuppressed(cleanupFailure);
         }
     }
 }

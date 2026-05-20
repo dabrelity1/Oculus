@@ -39,7 +39,15 @@ public final class BlockEntry {
         int statesStart;
         NamespacedId id;
 
-        if (splitStates[1].contains("=")) {
+        if (splitStates[1].isEmpty()
+            && splitStates.length >= 3
+            && !splitStates[2].isEmpty()
+            && !splitStates[2].contains("=")) {
+            // MakeUp 9.3e contains a few modded entries like betterendforge::lumecorn.
+            // Treat the empty segment as a typo so material IDs still reach terrain.
+            statesStart = 3;
+            id = new NamespacedId(splitStates[0], splitStates[2]);
+        } else if (splitStates[1].contains("=")) {
             statesStart = 1;
             id = new NamespacedId("minecraft", splitStates[0]);
         } else {

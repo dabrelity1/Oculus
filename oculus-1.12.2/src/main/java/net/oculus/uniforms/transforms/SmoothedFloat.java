@@ -8,23 +8,27 @@ import net.oculus.uniforms.SystemTimeUniforms;
  * Basic exponential smoothing helper mirrored from the modern Iris pipeline.
  */
 public final class SmoothedFloat implements FloatSupplier {
-    private static final double LN_OF_2 = Math.log(2.0);
-
     private final FloatSupplier unsmoothed;
     private float accumulator;
     private boolean hasInitialValue;
-    private final float decayConstantUp;
-    private final float decayConstantDown;
+    private float decayConstantUp;
+    private float decayConstantDown;
 
     public SmoothedFloat(float halfLifeUp, float halfLifeDown, FloatSupplier unsmoothed,
                          FrameUpdateNotifier notifier) {
-        this.decayConstantUp = computeDecay(halfLifeUp * 0.1F);
-        this.decayConstantDown = computeDecay(halfLifeDown * 0.1F);
         this.unsmoothed = unsmoothed;
+        configureHalfLives(halfLifeUp, halfLifeDown);
 
         if (notifier != null) {
             notifier.addListener(this::update);
         }
+    }
+
+    public void configureHalfLives(float halfLifeUp, float halfLifeDown) {
+        this.decayConstantUp = computeDecay(halfLifeUp * 0.1F);
+        this.decayConstantDown = computeDecay(halfLifeDown * 0.1F);
+        this.accumulator = 0.0F;
+        this.hasInitialValue = false;
     }
 
     private void update() {
@@ -42,10 +46,7 @@ public final class SmoothedFloat implements FloatSupplier {
     }
 
     private static float computeDecay(float halfLifeSeconds) {
-        if (halfLifeSeconds <= 0.0f) {
-            return 1.0f;
-        }
-        return (float) (1.0f / (halfLifeSeconds / LN_OF_2));
+        return ExponentialSmoothing.decayFromHalfLifeSeconds(halfLifeSeconds);
     }
 
     private static float exponentialDecay(float k, float t) {

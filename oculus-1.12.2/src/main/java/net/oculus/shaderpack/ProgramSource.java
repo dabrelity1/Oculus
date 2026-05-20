@@ -4,11 +4,6 @@ import java.util.Optional;
 
 import net.oculus.gl.blending.BlendModeOverride;
 
-/**
- * Port of the Iris {@code ProgramSource}. All behaviour related to directive
- * parsing and shader compilation is stubbed, but the public surface matches the
- * upstream implementation so dependent systems can be migrated verbatim.
- */
 public final class ProgramSource {
     private final String name;
     private final String vertexSource;

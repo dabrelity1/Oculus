@@ -2,7 +2,6 @@ package net.oculus.gl.program;
 
 import java.util.Collections;
 import java.util.HashMap;
-import java.util.Locale;
 import java.util.Map;
 
 /**
@@ -27,8 +26,7 @@ public final class SamplerOverrideMap {
         if (name == null) {
             return -1;
         }
-        String normalized = name.toLowerCase(Locale.ROOT);
-        return overrides.getOrDefault(normalized, -1);
+        return overrides.getOrDefault(name, -1);
     }
 
     public boolean isEmpty() {
@@ -59,7 +57,7 @@ public final class SamplerOverrideMap {
             if (name == null) {
                 return this;
             }
-            entries.put(name.toLowerCase(Locale.ROOT), unit);
+            entries.put(name, unit);
             return this;
         }
 

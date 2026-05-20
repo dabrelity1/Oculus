@@ -71,53 +71,70 @@ public final class DispatchingDirectiveHolder implements DirectiveHolder {
             case VEC2:
                 Consumer<Vector2f> vec2Consumer = vec2ConstVariables.get(key);
                 if (vec2Consumer != null) {
-                    vec2Consumer.accept(parseVec2(directive));
+                    try {
+                        vec2Consumer.accept(parseVec2(directive));
+                    } catch (NumberFormatException ex) {
+                        Oculus.LOGGER.error("Failed to process {}", directive, ex);
+                    }
                 }
                 break;
             case IVEC3:
                 Consumer<Vector3i> vec3Consumer = ivec3ConstVariables.get(key);
                 if (vec3Consumer != null) {
-                    vec3Consumer.accept(parseIVec3(directive));
+                    try {
+                        vec3Consumer.accept(parseIVec3(directive));
+                    } catch (NumberFormatException ex) {
+                        Oculus.LOGGER.error("Failed to process {}", directive, ex);
+                    }
                 }
                 break;
             case VEC4:
                 Consumer<Vector4f> vec4Consumer = vec4ConstVariables.get(key);
                 if (vec4Consumer != null) {
-                    vec4Consumer.accept(parseVec4(directive));
+                    try {
+                        vec4Consumer.accept(parseVec4(directive));
+                    } catch (NumberFormatException ex) {
+                        Oculus.LOGGER.error("Failed to process {}", directive, ex);
+                    }
                 }
                 break;
         }
     }
 
     private static Vector2f parseVec2(ConstDirective directive) {
-        String args = directive.getValue().substring("vec2".length()).trim();
-        String[] parts = stripArgs(args, 2, directive);
+        String[] parts = parseConstructorArgs(directive, "vec2", 2);
         return new Vector2f(Float.parseFloat(parts[0]), Float.parseFloat(parts[1]));
     }
 
     private static Vector3i parseIVec3(ConstDirective directive) {
-        String args = directive.getValue().substring("ivec3".length()).trim();
-        String[] parts = stripArgs(args, 3, directive);
+        String[] parts = parseConstructorArgs(directive, "ivec3", 3);
         return new Vector3i(Integer.parseInt(parts[0]), Integer.parseInt(parts[1]), Integer.parseInt(parts[2]));
     }
 
     private static Vector4f parseVec4(ConstDirective directive) {
-        String args = directive.getValue().substring("vec4".length()).trim();
-        String[] parts = stripArgs(args, 4, directive);
+        String[] parts = parseConstructorArgs(directive, "vec4", 4);
         return new Vector4f(Float.parseFloat(parts[0]), Float.parseFloat(parts[1]),
             Float.parseFloat(parts[2]), Float.parseFloat(parts[3]));
     }
 
-    private static String[] stripArgs(String args, int expected, ConstDirective directive) {
+    private static String[] parseConstructorArgs(ConstDirective directive, String constructor, int expected) {
+        String value = directive.getValue();
+        if (!value.startsWith(constructor)) {
+            Oculus.LOGGER.error("Failed to process {}: value was not a valid {} constructor", directive, constructor);
+        }
+
+        String args = value.substring(constructor.length()).trim();
         if (!args.startsWith("(") || !args.endsWith(")")) {
-            throw new IllegalArgumentException("Malformed directive: " + directive);
+            Oculus.LOGGER.error("Failed to process {}: value was not a valid {} constructor", directive, constructor);
         }
+
         String[] parts = args.substring(1, args.length() - 1).split(",");
-        if (parts.length != expected) {
-            throw new IllegalArgumentException("Expected " + expected + " args for " + directive);
-        }
         for (int i = 0; i < parts.length; i++) {
             parts[i] = parts[i].trim();
+        }
+        if (parts.length != expected) {
+            Oculus.LOGGER.error("Failed to process {}: expected {} arguments to a {} constructor, got {}",
+                directive, expected, constructor, parts.length);
         }
         return parts;
     }

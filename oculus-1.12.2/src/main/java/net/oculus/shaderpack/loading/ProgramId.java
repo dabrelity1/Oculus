@@ -3,13 +3,17 @@ package net.oculus.shaderpack.loading;
 import java.util.Objects;
 import java.util.Optional;
 
+import net.oculus.gl.blending.BlendMode;
+import net.oculus.gl.blending.BlendModeFunction;
 import net.oculus.gl.blending.BlendModeOverride;
 
 /**
  * Enumeration of shader program identifiers along with bookkeeping metadata.
  */
 public enum ProgramId {
-	Shadow(ProgramGroup.Shadow, "", BlendModeOverride.OFF),
+	Shadow(ProgramGroup.Shadow, ""),
+	ShadowSolid(ProgramGroup.Shadow, "solid", Shadow),
+	ShadowCutout(ProgramGroup.Shadow, "cutout", Shadow),
 
 	Basic(ProgramGroup.Gbuffers, "basic"),
 	Line(ProgramGroup.Gbuffers, "line", Basic),
@@ -21,16 +25,25 @@ public enum ProgramId {
 	Clouds(ProgramGroup.Gbuffers, "clouds", Textured),
 
 	Terrain(ProgramGroup.Gbuffers, "terrain", TexturedLit),
+	TerrainSolid(ProgramGroup.Gbuffers, "terrain_solid", Terrain),
+	TerrainCutoutMip(ProgramGroup.Gbuffers, "terrain_cutout_mip", Terrain),
+	TerrainCutout(ProgramGroup.Gbuffers, "terrain_cutout", Terrain),
 	DamagedBlock(ProgramGroup.Gbuffers, "damagedblock", Terrain),
 
 	Block(ProgramGroup.Gbuffers, "block", Terrain),
 	BeaconBeam(ProgramGroup.Gbuffers, "beaconbeam", Textured),
+	Item(ProgramGroup.Gbuffers, "item", TexturedLit),
 
 	Entities(ProgramGroup.Gbuffers, "entities", TexturedLit),
 	EntitiesTrans(ProgramGroup.Gbuffers, "entities_translucent", Entities),
 	EntitiesGlowing(ProgramGroup.Gbuffers, "entities_glowing", Entities),
 	ArmorGlint(ProgramGroup.Gbuffers, "armor_glint", Textured),
-	SpiderEyes(ProgramGroup.Gbuffers, "spidereyes", Textured, BlendModeOverride.DEFAULT),
+	SpiderEyes(ProgramGroup.Gbuffers, "spidereyes", Textured,
+		BlendModeOverride.of(new BlendMode(
+			BlendModeFunction.SRC_ALPHA.getGlId(),
+			BlendModeFunction.ONE.getGlId(),
+			BlendModeFunction.ZERO.getGlId(),
+			BlendModeFunction.ONE.getGlId()))),
 
 	Hand(ProgramGroup.Gbuffers, "hand", TexturedLit),
 	Weather(ProgramGroup.Gbuffers, "weather", TexturedLit),

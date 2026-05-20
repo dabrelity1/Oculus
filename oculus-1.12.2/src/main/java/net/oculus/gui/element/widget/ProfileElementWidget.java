@@ -68,7 +68,7 @@ public class ProfileElementWidget extends BaseOptionElementWidget<OptionMenuProf
         Optional<Profile> current = result.current;
         if (current.isPresent()) {
             String profileName = current.get().name;
-            ITextComponent translated = GuiUtil.translateOrDefault(new TextComponentString(profileName), "profile." + profileName);
+            ITextComponent translated = GuiUtil.translateShaderPackOrDefault(screen.getCurrentPack(), new TextComponentString(profileName), "profile." + profileName);
             this.profileLabel = translated;
         } else {
             this.profileLabel = PROFILE_CUSTOM.createCopy();

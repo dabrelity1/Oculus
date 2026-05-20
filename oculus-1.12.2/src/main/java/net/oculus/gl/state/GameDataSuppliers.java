@@ -2,10 +2,12 @@ package net.oculus.gl.state;
 
 import java.nio.Buffer;
 import java.nio.FloatBuffer;
+import java.util.Arrays;
 import java.util.function.IntSupplier;
 import java.util.function.Supplier;
 
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.shader.Framebuffer;
 import net.minecraft.entity.Entity;
 import org.lwjgl.BufferUtils;
 import org.lwjgl.opengl.GL11;
@@ -17,10 +19,10 @@ import org.lwjgl.opengl.GL11;
 public final class GameDataSuppliers {
     private static final FloatBuffer CAMERA_POSITION = BufferUtils.createFloatBuffer(3);
     // LWJGL expects a minimum of 16 floats for glGetFloat queries regardless of the
-    // actual component count (GL_FOG_COLOR only uses 4), so allocate a larger buffer
+    // actual component count, so allocate a larger buffer
     // and clamp the exposed range after the driver populates it.
     private static final FloatBuffer FOG_COLOR = BufferUtils.createFloatBuffer(16);
-    private static final FloatBuffer SINGLE_FLOAT = BufferUtils.createFloatBuffer(1);
+    private static final FloatBuffer SINGLE_FLOAT = BufferUtils.createFloatBuffer(16);
 
     private static volatile float partialTicksOverride = Float.NaN;
 
@@ -33,18 +35,15 @@ public final class GameDataSuppliers {
     private static final IntSupplier FOG_MODE_SUPPLIER = GameDataSuppliers::readFogMode;
     private static final Supplier<Float> VIEW_WIDTH_SUPPLIER = () -> {
         Minecraft mc = Minecraft.getMinecraft();
-        return mc != null ? (float) mc.displayWidth : 0.0F;
+        return (float) currentViewportWidth(mc);
     };
     private static final Supplier<Float> VIEW_HEIGHT_SUPPLIER = () -> {
         Minecraft mc = Minecraft.getMinecraft();
-        return mc != null ? (float) mc.displayHeight : 0.0F;
+        return (float) currentViewportHeight(mc);
     };
     private static final Supplier<Float> ASPECT_RATIO_SUPPLIER = () -> {
         Minecraft mc = Minecraft.getMinecraft();
-        if (mc == null || mc.displayHeight == 0) {
-            return 1.0F;
-        }
-        return (float) mc.displayWidth / (float) mc.displayHeight;
+        return computeAspectRatio(currentViewportWidth(mc), currentViewportHeight(mc));
     };
 
     private GameDataSuppliers() {
@@ -94,12 +93,23 @@ public final class GameDataSuppliers {
         return ASPECT_RATIO_SUPPLIER;
     }
 
+    public static void updateScreenSize(float[] target) {
+        Minecraft mc = Minecraft.getMinecraft();
+        if (mc == null) {
+            Arrays.fill(target, 0.0F);
+            return;
+        }
+
+        target[0] = currentViewportWidth(mc);
+        target[1] = currentViewportHeight(mc);
+    }
+
     private static FloatBuffer updateCameraPosition() {
         Minecraft mc = Minecraft.getMinecraft();
         Entity entity = mc != null ? mc.getRenderViewEntity() : null;
         float partialTicks = resolvePartialTicks(mc);
 
-    ((Buffer) CAMERA_POSITION).clear();
+        ((Buffer) CAMERA_POSITION).clear();
 
         if (entity == null) {
             CAMERA_POSITION.put(0.0F).put(0.0F).put(0.0F);
@@ -110,7 +120,7 @@ public final class GameDataSuppliers {
             CAMERA_POSITION.put((float) x).put((float) y).put((float) z);
         }
 
-    ((Buffer) CAMERA_POSITION).flip();
+        ((Buffer) CAMERA_POSITION).flip();
         return CAMERA_POSITION;
     }
 
@@ -130,7 +140,37 @@ public final class GameDataSuppliers {
     }
 
     private static int readFogMode() {
-        return GL11.glGetInteger(GL11.GL_FOG_MODE);
+        return computeFogMode(GL11.glIsEnabled(GL11.GL_FOG), GL11.glGetInteger(GL11.GL_FOG_MODE));
+    }
+
+    static int computeFogMode(boolean enabled, int fogMode) {
+        return enabled ? fogMode : 0;
+    }
+
+    static int chooseViewportDimension(int framebufferDimension, int displayDimension) {
+        return framebufferDimension > 0 ? framebufferDimension : displayDimension;
+    }
+
+    static float computeAspectRatio(int width, int height) {
+        return height == 0 ? 1.0F : (float) width / (float) height;
+    }
+
+    private static int currentViewportWidth(Minecraft mc) {
+        if (mc == null) {
+            return 0;
+        }
+
+        Framebuffer framebuffer = mc.getFramebuffer();
+        return chooseViewportDimension(framebuffer == null ? 0 : framebuffer.framebufferWidth, mc.displayWidth);
+    }
+
+    private static int currentViewportHeight(Minecraft mc) {
+        if (mc == null) {
+            return 0;
+        }
+
+        Framebuffer framebuffer = mc.getFramebuffer();
+        return chooseViewportDimension(framebuffer == null ? 0 : framebuffer.framebufferHeight, mc.displayHeight);
     }
 
     private static float resolvePartialTicks(Minecraft mc) {

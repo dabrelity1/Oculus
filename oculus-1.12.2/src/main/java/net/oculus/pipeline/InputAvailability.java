@@ -1,10 +1,5 @@
 package net.oculus.pipeline;
 
-/**
- * Simplified representation of which vanilla inputs (texture coordinates, lightmaps, overlays)
- * are available for a draw call. The structure mirrors the Iris 1.16.5 version but leaves the
- * behaviour stubbed for now.
- */
 public final class InputAvailability {
     public static final int NUM_VALUES = 8;
 

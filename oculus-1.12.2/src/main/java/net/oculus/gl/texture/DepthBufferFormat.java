@@ -4,10 +4,6 @@ import org.lwjgl.opengl.GL11;
 import org.lwjgl.opengl.GL14;
 import org.lwjgl.opengl.GL30;
 
-/**
- * Simple mirror of the Iris depth buffer format enumeration. The concrete OpenGL wiring is
- * intentionally lightweight for now so that framebuffer scaffolding can compile on 1.12.2.
- */
 public enum DepthBufferFormat {
     DEPTH(false),
     DEPTH16(false),
@@ -75,7 +71,7 @@ public enum DepthBufferFormat {
         }
     }
 
-    public int getGlFormat() {
+    public int getGlPixelType() {
         switch (this) {
             case DEPTH:
             case DEPTH16:
@@ -95,8 +91,16 @@ public enum DepthBufferFormat {
         }
     }
 
+    public int getGlPixelFormat() {
+        return combinedStencil ? GL30.GL_DEPTH_STENCIL : GL11.GL_DEPTH_COMPONENT;
+    }
+
+    public int getGlFormat() {
+        return getGlPixelType();
+    }
+
     public int getGlType() {
-    return combinedStencil ? GL30.GL_DEPTH_STENCIL : GL11.GL_DEPTH_COMPONENT;
+        return getGlPixelFormat();
     }
 
     public boolean isCombinedStencil() {

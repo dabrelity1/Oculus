@@ -29,7 +29,7 @@ public final class PackRenderTargetDirectives {
 	));
 
 	public static final Set<Integer> BASELINE_SUPPORTED_RENDER_TARGETS = Collections.unmodifiableSet(
-		IntStream.range(0, 8).boxed().collect(Collectors.toSet())
+		IntStream.range(0, IrisLimits.MAX_COLOR_BUFFERS).boxed().collect(Collectors.toSet())
 	);
 
 	private final Map<Integer, RenderTargetSettings> renderTargetSettings;
@@ -46,11 +46,13 @@ public final class PackRenderTargetDirectives {
 	public void acceptDirectives(DirectiveHolder directives) {
 		Optional.ofNullable(renderTargetSettings.get(7)).ifPresent(colortex7 ->
 			directives.acceptCommentStringDirective("GAUX4FORMAT", format -> {
-				Optional<InternalTextureFormat> internalFormat = InternalTextureFormat.fromString(format);
-				if (internalFormat.isPresent()) {
-					colortex7.requestedFormat = internalFormat.get();
+				InternalTextureFormat legacyFormat = parseLegacyGaux4Format(format);
+				if (legacyFormat != null) {
+					colortex7.requestedFormat = legacyFormat;
 				} else {
-					Oculus.LOGGER.warn("Unknown GAUX4FORMAT value '{}'", format);
+					Oculus.LOGGER.warn(
+						"Ignoring GAUX4FORMAT directive /* GAUX4FORMAT:{}*/ because {} must be RGBA32F, RGB32F, or RGB16. Use `const int colortex7Format = {};` instead.",
+						format, format, format);
 				}
 			})
 		);
@@ -83,6 +85,19 @@ public final class PackRenderTargetDirectives {
 
 		directives.acceptConstBooleanDirective(bufferName + "Clear", value -> settings.clear = value);
 		directives.acceptConstVec4Directive(bufferName + "ClearColor", value -> settings.clearColor = value);
+	}
+
+	private static InternalTextureFormat parseLegacyGaux4Format(String format) {
+		if ("RGBA32F".equals(format)) {
+			return InternalTextureFormat.RGBA32F;
+		}
+		if ("RGB32F".equals(format)) {
+			return InternalTextureFormat.RGB32F;
+		}
+		if ("RGB16".equals(format)) {
+			return InternalTextureFormat.RGB16;
+		}
+		return null;
 	}
 
 	public Map<Integer, RenderTargetSettings> getRenderTargetSettings() {

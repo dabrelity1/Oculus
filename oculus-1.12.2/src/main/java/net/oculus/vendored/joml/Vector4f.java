@@ -1,8 +1,7 @@
 package net.oculus.vendored.joml;
 
 /**
- * Minimal stand-in for JOML's {@code Vector4f}, used solely for directive
- * placeholders.
+ * Small immutable vector used for parsed directive values.
  */
 public final class Vector4f {
     private final float x;
@@ -31,5 +30,30 @@ public final class Vector4f {
 
     public float w() {
         return w;
+    }
+
+    @Override
+    public boolean equals(Object object) {
+        if (this == object) {
+            return true;
+        }
+        if (!(object instanceof Vector4f)) {
+            return false;
+        }
+        Vector4f other = (Vector4f) object;
+        return Float.floatToIntBits(w) == Float.floatToIntBits(other.w)
+            && Float.floatToIntBits(x) == Float.floatToIntBits(other.x)
+            && Float.floatToIntBits(y) == Float.floatToIntBits(other.y)
+            && Float.floatToIntBits(z) == Float.floatToIntBits(other.z);
+    }
+
+    @Override
+    public int hashCode() {
+        int result = 1;
+        result = 31 * result + Float.floatToIntBits(w);
+        result = 31 * result + Float.floatToIntBits(x);
+        result = 31 * result + Float.floatToIntBits(y);
+        result = 31 * result + Float.floatToIntBits(z);
+        return result;
     }
 }

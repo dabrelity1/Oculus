@@ -22,6 +22,7 @@ public final class ProgramCreator {
     public static int create(String name, GlShader... shaders) {
         int program = OculusRenderSystem.glCreateProgram();
         boolean linked = false;
+        Throwable primaryFailure = null;
 
         // Bind attribute slots used by shader packs before linking.
         OculusRenderSystem.bindAttributeLocation(program, 11, "mc_Entity");
@@ -51,16 +52,51 @@ public final class ProgramCreator {
 
             linked = true;
             return program;
+        } catch (RuntimeException | Error exception) {
+            primaryFailure = exception;
+            throw exception;
         } finally {
             for (GlShader shader : shaders) {
-                if (program != 0) {
-                    OculusRenderSystem.glDetachShader(program, shader.getHandle());
-                }
+                detachShader(program, shader, name, primaryFailure);
             }
 
             if (!linked) {
-                OculusRenderSystem.glDeleteProgram(program);
+                deleteFailedProgram(program, name, primaryFailure);
             }
         }
+    }
+
+    private static void detachShader(int program, GlShader shader, String name, Throwable primaryFailure) {
+        if (program == 0) {
+            return;
+        }
+
+        try {
+            OculusRenderSystem.glDetachShader(program, shader.getHandle());
+        } catch (RuntimeException | Error cleanupFailure) {
+            handleCleanupFailure(primaryFailure, cleanupFailure,
+                "Failed to detach shader " + shader.getName() + " from program " + name);
+        }
+    }
+
+    private static void deleteFailedProgram(int program, String name, Throwable primaryFailure) {
+        if (program == 0) {
+            return;
+        }
+
+        try {
+            OculusRenderSystem.glDeleteProgram(program);
+        } catch (RuntimeException | Error cleanupFailure) {
+            handleCleanupFailure(primaryFailure, cleanupFailure,
+                "Failed to delete incomplete program " + name);
+        }
+    }
+
+    private static void handleCleanupFailure(Throwable primaryFailure, Throwable cleanupFailure, String message) {
+        if (primaryFailure != null) {
+            primaryFailure.addSuppressed(cleanupFailure);
+        }
+
+        LOGGER.debug(message, cleanupFailure);
     }
 }

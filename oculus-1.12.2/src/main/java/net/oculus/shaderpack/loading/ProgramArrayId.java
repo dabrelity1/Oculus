@@ -1,7 +1,7 @@
 package net.oculus.shaderpack.loading;
 
 /**
- * Identifiers for shader program arrays such as shadow composite passes.
+ * Identifiers for shaderpack program arrays exposed through ProgramSet discovery.
  */
 public enum ProgramArrayId {
     ShadowComposite(ProgramGroup.ShadowComposite, 99),

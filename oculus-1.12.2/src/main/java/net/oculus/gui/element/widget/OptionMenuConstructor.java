@@ -6,27 +6,26 @@ import java.util.List;
 
 import net.minecraft.util.text.ITextComponent;
 import net.minecraft.util.text.TextComponentString;
+import net.minecraft.util.text.Style;
+import net.minecraft.util.text.TextFormatting;
 
 import net.oculus.gui.GuiUtil;
 import net.oculus.gui.NavigationController;
 import net.oculus.gui.ShaderPackScreen;
 import net.oculus.gui.element.ShaderPackOptionList;
+import net.oculus.gui.element.screen.ElementWidgetScreenData;
 import net.oculus.shaderpack.ShaderPack;
-import net.oculus.shaderpack.option.OptionSet;
-import net.oculus.shaderpack.option.ProfileSet;
+import net.oculus.shaderpack.option.menu.OptionMenuBooleanOptionElement;
 import net.oculus.shaderpack.option.menu.OptionMenuContainer;
 import net.oculus.shaderpack.option.menu.OptionMenuElement;
 import net.oculus.shaderpack.option.menu.OptionMenuElementScreen;
+import net.oculus.shaderpack.option.menu.OptionMenuLinkElement;
+import net.oculus.shaderpack.option.menu.OptionMenuMainElementScreen;
+import net.oculus.shaderpack.option.menu.OptionMenuOptionElement;
 import net.oculus.shaderpack.option.menu.OptionMenuProfileElement;
-import net.oculus.shaderpack.option.values.MutableOptionValues;
-import net.oculus.shaderpack.option.values.OptionValues;
+import net.oculus.shaderpack.option.menu.OptionMenuStringOptionElement;
+import net.oculus.shaderpack.option.menu.OptionMenuSubElementScreen;
 
-/**
- * Temporary shim that builds a minimal option list layout until the full option
- * menu parsing layer is ported. It keeps the GUI wiring identical to the modern
- * implementation so the remaining pieces can slot in later without changing
- * this class.
- */
 public final class OptionMenuConstructor {
     private OptionMenuConstructor() {
     }
@@ -44,72 +43,76 @@ public final class OptionMenuConstructor {
             screen = container.subScreens.get(navigation.getCurrentScreen());
         }
 
+        ElementWidgetScreenData data = createScreenData(screen, packScreen);
         List<OptionMenuElement> elements = new ArrayList<>(screen.elements);
-        attachProfileWidget(elements, packScreen);
+        attachPendingValueSuppliers(elements, packScreen);
 
-        ITextComponent heading = new TextComponentString(screen.getScreenId() != null ? screen.getScreenId() : "Shader Options");
-        optionList.addHeader(heading, navigation.hasHistory());
+        optionList.addHeader(data.heading, data.backButton);
 
         int columns = Math.max(1, screen.getColumnCount());
         List<AbstractElementWidget<?>> widgets = elements.isEmpty()
             ? Collections.singletonList(AbstractElementWidget.EMPTY)
-            : createWidgets(elements);
+            : createWidgets(elements, packScreen, navigation);
 
         optionList.addWidgets(columns, widgets);
     }
 
-    private static void attachProfileWidget(List<OptionMenuElement> elements, ShaderPackScreen packScreen) {
+    private static ElementWidgetScreenData createScreenData(OptionMenuElementScreen screen, ShaderPackScreen packScreen) {
+        if (screen instanceof OptionMenuSubElementScreen) {
+            String screenId = ((OptionMenuSubElementScreen) screen).screenId;
+            return new ElementWidgetScreenData(
+                GuiUtil.translateShaderPackOrDefault(packScreen != null ? packScreen.getCurrentPack() : null,
+                    new TextComponentString(screenId), "screen." + screenId),
+                true
+            );
+        }
+
+        ShaderPack pack = packScreen != null ? packScreen.getCurrentPack() : null;
+        String packName = pack != null ? pack.getName() : "Shader Options";
+        ITextComponent heading = new TextComponentString(packName);
+        Style style = heading.getStyle();
+        if (style == null) {
+            style = new Style();
+            heading.setStyle(style);
+        }
+        if (screen instanceof OptionMenuMainElementScreen) {
+            style.setBold(true).setColor(TextFormatting.WHITE);
+        }
+        return new ElementWidgetScreenData(heading, false);
+    }
+
+    private static void attachPendingValueSuppliers(List<OptionMenuElement> elements, ShaderPackScreen packScreen) {
         if (packScreen == null) {
             return;
         }
 
-        ShaderPack pack = packScreen.getCurrentPack();
-        ProfileSet profiles = pack != null ? pack.getProfileSet() : ProfileSet.empty();
-        if (profiles == null || profiles.size() == 0) {
-            return;
-        }
-
-        MutableOptionValues workingValues = packScreen.getWorkingOptionValues();
-        OptionValues appliedValues = pack != null ? pack.getOptionValues() : null;
-        OptionSet optionSet = resolveOptionSet(appliedValues, workingValues);
-        if (optionSet == null) {
-            return;
-        }
-
-        boolean hasProfileElement = false;
         for (OptionMenuElement element : elements) {
             if (element instanceof OptionMenuProfileElement) {
                 ((OptionMenuProfileElement) element).setPendingValuesSupplier(packScreen::getWorkingOptionValues);
-                hasProfileElement = true;
+            } else if (element instanceof OptionMenuOptionElement) {
+                ((OptionMenuOptionElement) element).setPendingValuesSupplier(packScreen::getWorkingOptionValues);
             }
         }
-
-        if (!hasProfileElement) {
-            OptionValues applied = appliedValues != null ? appliedValues : (workingValues != null ? workingValues : new MutableOptionValues(optionSet));
-            OptionMenuProfileElement profileElement = new OptionMenuProfileElement(profiles, optionSet, applied);
-            profileElement.setPendingValuesSupplier(packScreen::getWorkingOptionValues);
-            elements.add(profileElement);
-        }
     }
 
-    private static OptionSet resolveOptionSet(OptionValues appliedValues, MutableOptionValues workingValues) {
-        if (appliedValues != null && appliedValues.getOptionSet() != null) {
-            return appliedValues.getOptionSet();
-        }
-        if (workingValues != null) {
-            return workingValues.getOptionSet();
-        }
-        return null;
-    }
-
-    private static List<AbstractElementWidget<?>> createWidgets(List<OptionMenuElement> elements) {
+    private static List<AbstractElementWidget<?>> createWidgets(List<OptionMenuElement> elements, ShaderPackScreen screen, NavigationController navigation) {
         List<AbstractElementWidget<?>> widgets = new ArrayList<>();
         for (OptionMenuElement element : elements) {
+            AbstractElementWidget<?> widget;
             if (element instanceof OptionMenuProfileElement) {
-                widgets.add(new ProfileElementWidget((OptionMenuProfileElement) element));
-                continue;
+                widget = new ProfileElementWidget((OptionMenuProfileElement) element);
+            } else if (element instanceof OptionMenuBooleanOptionElement) {
+                widget = new BooleanElementWidget((OptionMenuBooleanOptionElement) element);
+            } else if (element instanceof OptionMenuStringOptionElement) {
+                OptionMenuStringOptionElement stringElement = (OptionMenuStringOptionElement) element;
+                widget = stringElement.slider ? new SliderElementWidget(stringElement) : new StringElementWidget(stringElement);
+            } else if (element instanceof OptionMenuLinkElement) {
+                widget = new LinkElementWidget((OptionMenuLinkElement) element);
+            } else {
+                widget = new PlaceholderWidget(element);
             }
-            widgets.add(new PlaceholderWidget(element));
+            widget.init(screen, navigation);
+            widgets.add(widget);
         }
         return widgets;
     }
@@ -121,7 +124,7 @@ public final class OptionMenuConstructor {
 
         @Override
         public void render(int x, int y, int width, int height, int mouseX, int mouseY, float partialTicks, boolean hovered) {
-            // Placeholder widget draws nothing; actual widgets will be ported soon.
+            // Intentionally blank for OptiFine's <empty> menu spacer element.
         }
     }
 }

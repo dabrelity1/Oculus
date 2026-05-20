@@ -20,6 +20,11 @@ public final class SmoothedVec2f implements Supplier<float[]> {
         this.y = new SmoothedFloat(halfLifeUp, halfLifeDown, () -> component(safeSupplier.get(), 1), notifier);
     }
 
+    public void configureHalfLives(float halfLifeUp, float halfLifeDown) {
+        x.configureHalfLives(halfLifeUp, halfLifeDown);
+        y.configureHalfLives(halfLifeUp, halfLifeDown);
+    }
+
     private static float component(float[] values, int index) {
         if (values == null || index >= values.length) {
             return 0f;

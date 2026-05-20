@@ -1,10 +1,5 @@
 package net.oculus.gl.blending;
 
-/**
- * Container describing the four GL blend function values for RGB/alpha. Even
- * though the 1.12 renderer does not yet apply them, storing the metadata keeps
- * shader pack expectations intact.
- */
 public final class BlendMode {
     private final int srcRgb;
     private final int dstRgb;

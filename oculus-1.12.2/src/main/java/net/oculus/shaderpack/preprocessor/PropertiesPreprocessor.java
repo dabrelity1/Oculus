@@ -4,8 +4,10 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 import org.anarres.cpp.Feature;
@@ -15,11 +17,43 @@ import org.anarres.cpp.StringLexerSource;
 import org.anarres.cpp.Token;
 
 import net.oculus.Oculus;
+import net.oculus.shader.IrisFeatureDefines;
+import net.oculus.shaderpack.ShaderProperties;
 import net.oculus.shaderpack.StringPair;
 import net.oculus.shaderpack.option.ShaderPackOptions;
 
 public class PropertiesPreprocessor {
     // Derived from ShaderProcessor.glslPreprocessSource, which is derived from GlShader from Canvas, licenced under LGPL
+    public static String preprocessShaderProperties(String source,
+                                                    ShaderPackOptions shaderPackOptions,
+                                                    Iterable<StringPair> environmentDefines) {
+        String firstPass = preprocessSource(source, shaderPackOptions, environmentDefines);
+        ShaderProperties firstPassProperties = new ShaderProperties(firstPass, shaderPackOptions);
+        List<StringPair> featureDefines = IrisFeatureDefines.createFeatureDefines(firstPassProperties);
+        if (featureDefines.isEmpty()) {
+            return firstPass;
+        }
+
+        List<StringPair> extendedDefines = new ArrayList<>();
+        Set<String> definedNames = new HashSet<>();
+        if (environmentDefines != null) {
+            for (StringPair define : environmentDefines) {
+                extendedDefines.add(define);
+                definedNames.add(define.getKey());
+            }
+        }
+
+        boolean addedFeatureDefine = false;
+        for (StringPair define : featureDefines) {
+            if (definedNames.add(define.getKey())) {
+                extendedDefines.add(define);
+                addedFeatureDefine = true;
+            }
+        }
+
+        return addedFeatureDefine ? preprocessSource(source, shaderPackOptions, extendedDefines) : firstPass;
+    }
+
     public static String preprocessSource(String source, ShaderPackOptions shaderPackOptions, Iterable<StringPair> environmentDefines) {
         if (source.contains(PropertyCollectingListener.PROPERTY_MARKER)) {
             throw new RuntimeException("Some shader author is trying to exploit internal Iris implementation details, stop!");
@@ -33,8 +67,10 @@ public class PropertiesPreprocessor {
                 pp.addMacro(value);
             }
 
-            for (StringPair envDefine : environmentDefines) {
-                pp.addMacro(envDefine.getKey(), envDefine.getValue());
+            if (environmentDefines != null) {
+                for (StringPair envDefine : environmentDefines) {
+                    pp.addMacro(envDefine.getKey(), envDefine.getValue());
+                }
             }
 
             stringValues.forEach((name, value) -> {
@@ -61,8 +97,10 @@ public class PropertiesPreprocessor {
         Preprocessor preprocessor = new Preprocessor();
 
         try {
-            for (StringPair envDefine : environmentDefines) {
-                preprocessor.addMacro(envDefine.getKey(), envDefine.getValue());
+            if (environmentDefines != null) {
+                for (StringPair envDefine : environmentDefines) {
+                    preprocessor.addMacro(envDefine.getKey(), envDefine.getValue());
+                }
             }
         } catch (LexerException e) {
             e.printStackTrace();

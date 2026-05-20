@@ -21,6 +21,8 @@ import net.oculus.Oculus;
  * Loads OptiFine-style language .lang files bundled with shader packs.
  */
 public final class LanguageMap {
+    private static final LanguageMap EMPTY = new LanguageMap(null);
+
     private final Map<String, Map<String, String>> translations = new HashMap<>();
 
     public LanguageMap(Path langRoot) {
@@ -65,5 +67,18 @@ public final class LanguageMap {
 
     public Map<String, String> getTranslations(String language) {
         return translations.getOrDefault(language, Collections.emptyMap());
+    }
+
+    public String get(String language, String key) {
+        if (key == null) {
+            return null;
+        }
+
+        Map<String, String> map = getTranslations(language == null ? "" : language.toLowerCase(Locale.ROOT));
+        return map.get(key);
+    }
+
+    public static LanguageMap empty() {
+        return EMPTY;
     }
 }

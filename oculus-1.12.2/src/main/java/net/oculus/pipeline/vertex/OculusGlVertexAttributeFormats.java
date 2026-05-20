@@ -10,6 +10,7 @@ import java.lang.reflect.Constructor;
  */
 public final class OculusGlVertexAttributeFormats {
     public static final GlVertexAttributeFormat BYTE = create(GL11.GL_BYTE, 1);
+    public static final GlVertexAttributeFormat SHORT = create(GL11.GL_SHORT, 2);
 
     private OculusGlVertexAttributeFormats() {
     }

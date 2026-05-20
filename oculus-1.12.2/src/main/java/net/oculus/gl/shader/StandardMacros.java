@@ -17,6 +17,8 @@ import org.lwjgl.opengl.GL20;
 
 import net.oculus.pipeline.WorldRenderingPhase;
 import net.oculus.shaderpack.StringPair;
+import net.oculus.texture.format.TextureFormat;
+import net.oculus.texture.format.TextureFormatLoader;
 
 /**
  * Provides the OptiFine-compatible macro set used when preprocessing shader pack files.
@@ -24,8 +26,10 @@ import net.oculus.shaderpack.StringPair;
 public final class StandardMacros {
     private static final Pattern VERSION_PATTERN = Pattern.compile("(\\d+)(?:\\.(\\d+))?(?:\\.(\\d+))?");
     private static final Pattern GL_VERSION_PATTERN = Pattern.compile("(?<major>\\d+)\\.(?<minor>\\d+)(?:\\.(?<bugfix>\\d+))?.*");
-    private static final int MINIMUM_COMPAT_VERSION = 11605;
+    private static final int TARGET_MC_VERSION = 11202;
+    private static final String UNKNOWN_GL_VERSION = "000";
     private static final String VERSION_OVERRIDE_PROPERTY = "oculus.mcVersionOverride";
+    static final String DISABLE_GL_STRING_PROBES_PROPERTY = "oculus.disableGlStringProbes";
     private static final String DEFAULT_HAND_DEPTH = "0.125";
 
     private StandardMacros() {
@@ -63,6 +67,15 @@ public final class StandardMacros {
         define(defines, "MC_SHADOW_QUALITY", "1.0");
         define(defines, "MC_HAND_DEPTH", DEFAULT_HAND_DEPTH);
 
+        TextureFormat textureFormat = TextureFormatLoader.getFormat();
+        if (textureFormat != null) {
+            for (String define : textureFormat.getDefines()) {
+                define(defines, define);
+            }
+        }
+
+        define(defines, "IS_IRIS");
+
         getRenderStages().forEach((stage, index) -> define(defines, stage, index));
 
         return defines;
@@ -97,11 +110,7 @@ public final class StandardMacros {
         }
 
         int parsed = parseMinecraftVersion(reported);
-        if (parsed < MINIMUM_COMPAT_VERSION) {
-            parsed = MINIMUM_COMPAT_VERSION;
-        }
-
-        return formatVersion(parsed);
+        return formatVersion(parsed > 0 ? parsed : TARGET_MC_VERSION);
     }
 
     private static int parseOverride() {
@@ -159,15 +168,15 @@ public final class StandardMacros {
         return String.format(Locale.ROOT, "%05d", Math.max(version, 0));
     }
 
-    private static String getGlVersion(int parameter) {
-        String info = GL11.glGetString(parameter);
+    static String getGlVersion(int parameter) {
+        String info = getGlString(parameter);
         if (info == null) {
-            return formatVersion(MINIMUM_COMPAT_VERSION);
+            return UNKNOWN_GL_VERSION;
         }
 
         Matcher matcher = GL_VERSION_PATTERN.matcher(info.trim());
         if (!matcher.matches()) {
-            return formatVersion(MINIMUM_COMPAT_VERSION);
+            return UNKNOWN_GL_VERSION;
         }
 
         String major = matcher.group("major");
@@ -182,7 +191,7 @@ public final class StandardMacros {
         }
 
         int combined = Math.max(majorInt, 0) * 100 + Math.max(minorInt, 0) * 10 + bugfixInt;
-        return String.format(Locale.ROOT, "%04d", combined);
+        return String.format(Locale.ROOT, "%03d", combined);
     }
 
     private static String getOsMacro() {
@@ -200,19 +209,25 @@ public final class StandardMacros {
     }
 
     private static String getVendorMacro() {
-        String vendor = GL11.glGetString(GL11.GL_VENDOR);
+        return classifyVendorMacro(getGlString(GL11.GL_VENDOR));
+    }
+
+    static String classifyVendorMacro(String vendor) {
         if (vendor == null) {
             return null;
         }
         String lower = vendor.toLowerCase(Locale.ROOT);
-        if (lower.startsWith("nvidia")) {
-            return "MC_GL_VENDOR_NVIDIA";
-        }
-        if (lower.startsWith("ati") || lower.startsWith("amd")) {
-            return "MC_GL_VENDOR_AMD";
+        if (lower.startsWith("ati")) {
+            return "MC_GL_VENDOR_ATI";
         }
         if (lower.startsWith("intel")) {
             return "MC_GL_VENDOR_INTEL";
+        }
+        if (lower.startsWith("nvidia")) {
+            return "MC_GL_VENDOR_NVIDIA";
+        }
+        if (lower.startsWith("amd")) {
+            return "MC_GL_VENDOR_AMD";
         }
         if (lower.startsWith("x.org")) {
             return "MC_GL_VENDOR_XORG";
@@ -221,25 +236,34 @@ public final class StandardMacros {
     }
 
     private static String getRendererMacro() {
-        String renderer = GL11.glGetString(GL11.GL_RENDERER);
+        return classifyRendererMacro(getGlString(GL11.GL_RENDERER));
+    }
+
+    static String classifyRendererMacro(String renderer) {
         if (renderer == null) {
             return null;
         }
         String lower = renderer.toLowerCase(Locale.ROOT);
-        if (lower.startsWith("geforce") || lower.startsWith("nvidia")) {
-            return "MC_GL_RENDERER_GEFORCE";
-        }
-        if (lower.startsWith("quadro")) {
-            return "MC_GL_RENDERER_QUADRO";
-        }
-        if (lower.startsWith("radeon") || lower.startsWith("amd") || lower.startsWith("ati")) {
+        if (lower.startsWith("amd")) {
             return "MC_GL_RENDERER_RADEON";
+        }
+        if (lower.startsWith("ati")) {
+            return "MC_GL_RENDERER_RADEON";
+        }
+        if (lower.startsWith("radeon")) {
+            return "MC_GL_RENDERER_RADEON";
+        }
+        if (lower.startsWith("gallium")) {
+            return "MC_GL_RENDERER_GALLIUM";
         }
         if (lower.startsWith("intel")) {
             return "MC_GL_RENDERER_INTEL";
         }
-        if (lower.startsWith("gallium")) {
-            return "MC_GL_RENDERER_GALLIUM";
+        if (lower.startsWith("geforce") || lower.startsWith("nvidia")) {
+            return "MC_GL_RENDERER_GEFORCE";
+        }
+        if (lower.startsWith("quadro") || lower.startsWith("nvs")) {
+            return "MC_GL_RENDERER_QUADRO";
         }
         if (lower.startsWith("mesa")) {
             return "MC_GL_RENDERER_MESA";
@@ -249,7 +273,7 @@ public final class StandardMacros {
 
     private static Set<String> getGlExtensions() {
         Set<String> extensions = new HashSet<>();
-        String raw = GL11.glGetString(GL11.GL_EXTENSIONS);
+        String raw = getGlString(GL11.GL_EXTENSIONS);
         if (raw == null || raw.isEmpty()) {
             return extensions;
         }
@@ -263,5 +287,17 @@ public final class StandardMacros {
         }
 
         return extensions;
+    }
+
+    private static String getGlString(int parameter) {
+        if (Boolean.getBoolean(DISABLE_GL_STRING_PROBES_PROPERTY)) {
+            return null;
+        }
+
+        try {
+            return GL11.glGetString(parameter);
+        } catch (LinkageError | RuntimeException exception) {
+            return null;
+        }
     }
 }

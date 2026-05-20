@@ -21,6 +21,9 @@ public final class OculusChunkMeshAttributes {
     private OculusChunkMeshAttributes() {
     }
 
+    public static void initialize() {
+    }
+
     private static ChunkMeshAttribute ensure(String name) {
         for (ChunkMeshAttribute attribute : ChunkMeshAttribute.values()) {
             if (attribute.name().equals(name)) {

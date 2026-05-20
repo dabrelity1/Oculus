@@ -16,8 +16,39 @@ public final class FrameUpdateNotifier {
     }
 
     public void onNewFrame() {
-        for (Runnable listener : listeners) {
-            listener.run();
+        Throwable failure = null;
+        for (Runnable listener : new ArrayList<>(listeners)) {
+            try {
+                listener.run();
+            } catch (RuntimeException | Error exception) {
+                if (failure == null) {
+                    failure = exception;
+                } else {
+                    suppressNotifierFailure(failure, exception);
+                }
+            }
         }
+
+        rethrowNotifierFailure(failure);
+    }
+
+    private static void suppressNotifierFailure(Throwable failure, Throwable exception) {
+        if (exception != failure) {
+            failure.addSuppressed(exception);
+        }
+    }
+
+    private static void rethrowNotifierFailure(Throwable failure) {
+        if (failure == null) {
+            return;
+        }
+
+        if (failure instanceof RuntimeException) {
+            throw (RuntimeException) failure;
+        }
+        if (failure instanceof Error) {
+            throw (Error) failure;
+        }
+        throw new IllegalStateException("Unexpected frame update notifier failure", failure);
     }
 }

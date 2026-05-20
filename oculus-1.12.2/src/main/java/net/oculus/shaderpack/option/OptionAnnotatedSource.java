@@ -3,6 +3,8 @@ package net.oculus.shaderpack.option;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Set;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
@@ -312,11 +314,7 @@ public final class OptionAnnotatedSource {
         OptionSet.Builder builder = OptionSet.builder();
 
         booleanOptions.forEach((line, option) -> {
-            if (option.getType() == OptionType.DEFINE) {
-                if (referencedBooleanDefines.contains(option.getName())) {
-                    builder.addBoolean(option);
-                }
-            } else {
+            if (referencedBooleanDefines.contains(option.getName())) {
                 builder.addBoolean(option);
             }
         });
@@ -327,31 +325,94 @@ public final class OptionAnnotatedSource {
     }
 
     public LineTransform asTransform(OptionValues values) {
-        return (index, original) -> {
-            BooleanOption booleanOption = booleanOptions.get(index);
-            if (booleanOption != null) {
-                if (booleanOption.getType() == OptionType.DEFINE) {
-                    boolean enabled = values.getBooleanValueOrDefault(booleanOption.getName());
-                    if (enabled && original.startsWith("//#define")) {
-                        return original.replaceFirst("//#define", "#define");
-                    } else if (!enabled && original.startsWith("#define")) {
-                        return original.replaceFirst("#define", "//#define");
-                    }
-                } else {
-                    boolean enabled = values.getBooleanValueOrDefault(booleanOption.getName());
-                    return original.replaceFirst(booleanOption.getDefaultValue() ? "true" : "false", enabled ? "true" : "false");
+        return (index, line) -> edit(values, index, line);
+    }
+
+    public String apply(OptionValues values) {
+        StringBuilder source = new StringBuilder();
+
+        for (int index = 0; index < lines.size(); index++) {
+            source.append(edit(values, index, lines.get(index)));
+            source.append('\n');
+        }
+
+        return source.toString();
+    }
+
+    private String edit(OptionValues values, int index, String existing) {
+        BooleanOption booleanOption = booleanOptions.get(index);
+        if (booleanOption != null) {
+            OptionalBoolean value = values.getBooleanValue(booleanOption.getName());
+
+            if (booleanOption.getType() == OptionType.DEFINE) {
+                return setBooleanDefineValue(existing, value, booleanOption.getDefaultValue());
+            } else if (booleanOption.getType() == OptionType.CONST) {
+                if (value != OptionalBoolean.DEFAULT) {
+                    return editConst(
+                        existing,
+                        Boolean.toString(booleanOption.getDefaultValue()),
+                        Boolean.toString(value.orElse(booleanOption.getDefaultValue()))
+                    );
                 }
-                return original;
-            }
 
-            StringOption stringOption = stringOptions.get(index);
-            if (stringOption != null) {
-                String current = values.getStringValueOrDefault(stringOption.getName());
-                return original.replaceFirst(stringOption.getDefaultValue(), current);
+                return existing;
+            } else {
+                throw new AssertionError("Unknown option type " + booleanOption.getType());
             }
+        }
 
-            return original;
-        };
+        StringOption stringOption = stringOptions.get(index);
+        if (stringOption != null) {
+            return values.getStringValue(stringOption.getName()).map(value -> {
+                if (stringOption.getType() == OptionType.DEFINE) {
+                    return "#define " + stringOption.getName() + " " + value
+                        + " // OptionAnnotatedSource: Changed option";
+                } else if (stringOption.getType() == OptionType.CONST) {
+                    return editConst(existing, stringOption.getDefaultValue(), value);
+                }
+
+                throw new AssertionError("Unknown option type " + stringOption.getType());
+            }).orElse(existing);
+        }
+
+        return existing;
+    }
+
+    private String editConst(String line, String currentValue, String newValue) {
+        int equalsIndex = line.indexOf('=');
+
+        if (equalsIndex == -1) {
+            throw new IllegalStateException();
+        }
+
+        String firstPart = line.substring(0, equalsIndex);
+        String secondPart = line.substring(equalsIndex);
+        secondPart = secondPart.replaceFirst(Pattern.quote(currentValue), Matcher.quoteReplacement(newValue));
+
+        return firstPart + secondPart;
+    }
+
+    private static boolean hasLeadingComment(String line) {
+        return line.trim().startsWith("//");
+    }
+
+    private static String removeLeadingComment(String line) {
+        ParsedString parsed = new ParsedString(line);
+
+        parsed.takeSomeWhitespace();
+        parsed.takeComments();
+
+        return parsed.takeRest();
+    }
+
+    private static String setBooleanDefineValue(String line, OptionalBoolean newValue, boolean defaultValue) {
+        if (hasLeadingComment(line) && newValue.orElse(defaultValue)) {
+            return removeLeadingComment(line);
+        } else if (!newValue.orElse(defaultValue)) {
+            return "//" + line;
+        } else {
+            return line;
+        }
     }
 
     private static final class AnnotationsBuilder {

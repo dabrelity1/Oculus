@@ -11,14 +11,30 @@
 - **Goal**: Parity with the Iris/Oculus 1.16.5 renderer—gbuffers, shadow passes, compute stages, GUI, and pack compatibility—on legacy packs.
 - **Status**: Active development. Large pieces are still being ported (see open issues for the breakdown of remaining blockers).
 
-## Current focus areas
-1. Captured rendering state, camera trackers, and ID maps.
-2. Full uniform suite (camera, weather, player, compatibility shims).
-3. Framebuffer + shadow map rendering and sampler bindings.
-4. Render phase mixins for world, hand, weather, and composite passes.
-5. Shader pack UI/option persistence and compute/image wiring.
+## Agent and contributor starting points
 
-If you want to help, pick an unchecked issue from the tracker or open a discussion before starting a larger subsystem.
+The active codebase lives in [`oculus-1.12.2`](./oculus-1.12.2). Before changing rendering, shader-pack parsing, mixins, or build behavior, read:
+
+- [Workspace agent guide](./AGENTS.md)
+- [Project agent guide](./oculus-1.12.2/AGENTS.md)
+- [Documentation index](./oculus-1.12.2/docs/README.md)
+- [Current agent handoff](./oculus-1.12.2/docs/agent-handoff.md)
+- [Repository map](./oculus-1.12.2/docs/repo-map.md)
+- [Subsystem index](./oculus-1.12.2/docs/subsystem-index.md)
+- [Render target lifecycle](./oculus-1.12.2/docs/render-target-lifecycle.md)
+- [Backport status](./oculus-1.12.2/docs/backport-status.md)
+- [Full-port parity roadmap](./oculus-1.12.2/docs/parity-roadmap.md)
+
+Do not treat compile success as full-port completion. The port still needs in-client Minecraft 1.12.2 validation with real shader packs.
+
+## Current focus areas
+
+The current focus changes as the port closes gaps. Use the live handoff and roadmap instead of this root README for active priorities:
+
+- [Current agent handoff](./oculus-1.12.2/docs/agent-handoff.md)
+- [Full-port parity roadmap](./oculus-1.12.2/docs/parity-roadmap.md)
+
+If you want to help, start with the documentation index and verify the matching 1.16.5 reference classes before changing a subsystem.
 
 ## Requirements & compatibility
 - Forge 1.12.2-14.23.5.2768 (matching the Gradle config).

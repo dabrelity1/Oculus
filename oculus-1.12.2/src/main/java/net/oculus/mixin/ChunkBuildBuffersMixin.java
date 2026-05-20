@@ -22,14 +22,21 @@ public abstract class ChunkBuildBuffersMixin implements IChunkBuildBuffers {
 
     @Override
     public BlockContextHolder oculus_getContextHolder() {
-        return this.oculus_contextHolder;
+        return this.oculus$getOrCreateContextHolder();
     }
 
-    @Inject(method = "init", at = @At("RETURN"), remap = false)
+    @Inject(method = "init", at = @At("HEAD"), remap = false)
     private void oculus$initContextHolder(ChunkRenderData.Builder renderData, CallbackInfo ci) {
+        this.oculus$getOrCreateContextHolder();
+    }
+
+    @Unique
+    private BlockContextHolder oculus$getOrCreateContextHolder() {
         if (this.oculus_contextHolder == null) {
             this.oculus_contextHolder = BlockContextHolder.createActiveHolder();
         }
+
+        return this.oculus_contextHolder;
     }
 
     @Redirect(method = "init", at = @At(value = "INVOKE", target = "me/jellysquid/mods/sodium/client/model/vertex/type/ChunkVertexType.createBufferWriter(Lme/jellysquid/mods/sodium/client/model/vertex/buffer/VertexBufferView;Z)Lme/jellysquid/mods/sodium/client/model/vertex/VertexSink;"), remap = false)
@@ -37,11 +44,7 @@ public abstract class ChunkBuildBuffersMixin implements IChunkBuildBuffers {
         VertexSink sink = type.createBufferWriter(buffer, direct);
 
         if (sink instanceof ContextAwareVertexWriter) {
-            if (this.oculus_contextHolder == null) {
-                this.oculus_contextHolder = BlockContextHolder.createActiveHolder();
-            }
-
-            ((ContextAwareVertexWriter) sink).setContextHolder(this.oculus_contextHolder);
+            ((ContextAwareVertexWriter) sink).setContextHolder(this.oculus$getOrCreateContextHolder());
         }
 
         return sink;

@@ -39,7 +39,7 @@ public abstract class ChunkRenderRebuildTaskMixin {
     @Redirect(method = "performBuild", at = @At(value = "INVOKE", target = "me/jellysquid/mods/sodium/client/render/pipeline/BlockRenderer.renderModel(Lnet/minecraft/world/IBlockAccess;Lnet/minecraft/block/state/IBlockState;Lnet/minecraft/util/math/BlockPos;Lnet/minecraft/client/renderer/block/model/IBakedModel;Lme/jellysquid/mods/sodium/client/render/chunk/compile/buffers/ChunkModelBuffers;ZJ)Z"), remap = false)
     private boolean oculus$onRenderBlock(BlockRenderer renderer, IBlockAccess world, IBlockState state, BlockPos pos, IBakedModel model, ChunkModelBuffers modelBuffers, boolean cull, long seed, ChunkRenderCacheLocal cache, ChunkBuildBuffers buffers, CancellationSource cancellationSource) {
         if (this.oculus_contextHolder != null) {
-            this.oculus_contextHolder.setLocalPos(pos.getX(), pos.getY(), pos.getZ());
+            this.oculus_contextHolder.setLocalPos(pos.getX() & 15, pos.getY() & 15, pos.getZ() & 15);
             this.oculus_contextHolder.set(state, OculusExtendedDataHelper.BLOCK_RENDER_TYPE);
         }
 
@@ -55,7 +55,7 @@ public abstract class ChunkRenderRebuildTaskMixin {
     @Redirect(method = "performBuild", at = @At(value = "INVOKE", target = "me/jellysquid/mods/sodium/client/render/pipeline/FluidRenderer.render(Lnet/minecraft/world/IBlockAccess;Lnet/minecraft/block/state/IBlockState;Lnet/minecraft/util/math/BlockPos;Lme/jellysquid/mods/sodium/client/render/chunk/compile/buffers/ChunkModelBuffers;)Z"), remap = false)
     private boolean oculus$onRenderFluid(FluidRenderer renderer, IBlockAccess world, IBlockState state, BlockPos pos, ChunkModelBuffers modelBuffers, ChunkRenderCacheLocal cache, ChunkBuildBuffers buffers, CancellationSource cancellationSource) {
         if (this.oculus_contextHolder != null) {
-            this.oculus_contextHolder.setLocalPos(pos.getX(), pos.getY(), pos.getZ());
+            this.oculus_contextHolder.setLocalPos(pos.getX() & 15, pos.getY() & 15, pos.getZ() & 15);
             this.oculus_contextHolder.set(state, OculusExtendedDataHelper.FLUID_RENDER_TYPE);
         }
 

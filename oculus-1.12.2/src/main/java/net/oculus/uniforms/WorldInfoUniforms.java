@@ -1,6 +1,7 @@
 package net.oculus.uniforms;
 
 import net.minecraft.client.Minecraft;
+import net.minecraft.world.DimensionType;
 import net.minecraft.world.World;
 import net.minecraft.world.WorldProvider;
 
@@ -8,23 +9,15 @@ import net.minecraft.world.WorldProvider;
  * Provides world metadata uniforms that shader packs expect from the Iris pipeline.
  */
 public final class WorldInfoUniforms {
-    private static final Minecraft MC = Minecraft.getMinecraft();
-
     private WorldInfoUniforms() {
     }
 
     public static int getBedrockLevel() {
-        WorldProvider provider = getProvider();
-        if (provider == null) {
-            return 0;
-        }
-        // There is no dedicated API in 1.12.2, so fall back to the provider's average ground level.
-        return (int) provider.getAverageGroundLevel();
+        return 0;
     }
 
     public static float getCloudHeight() {
-        WorldProvider provider = getProvider();
-        return provider != null ? provider.getCloudHeight() : 192.0F;
+        return getCloudHeight(getProvider());
     }
 
     public static int getHeightLimit() {
@@ -33,12 +26,15 @@ public final class WorldInfoUniforms {
     }
 
     public static int getLogicalHeightLimit() {
-        return getHeightLimit();
+        return getLogicalHeightLimit(getProvider(), getHeightLimit());
     }
 
     public static int hasCeiling() {
-        WorldProvider provider = getProvider();
-        return provider != null && !provider.hasSkyLight() ? 1 : 0;
+        return hasCeiling(getProvider());
+    }
+
+    static int hasCeiling(WorldProvider provider) {
+        return provider != null && provider.isNether() ? 1 : 0;
     }
 
     public static int hasSkylight() {
@@ -50,7 +46,34 @@ public final class WorldInfoUniforms {
     }
 
     public static float getAmbientLight() {
-        WorldProvider provider = getProvider();
+        return getAmbientLight(getProvider());
+    }
+
+    static float getCloudHeight(WorldProvider provider) {
+        if (provider == null) {
+            return 192.0F;
+        }
+
+        if (isVanillaNether(provider) || isVanillaEnd(provider)) {
+            return Float.NaN;
+        }
+
+        return provider.getCloudHeight();
+    }
+
+    static int getLogicalHeightLimit(WorldProvider provider, int heightLimit) {
+        if (isVanillaNether(provider)) {
+            return 128;
+        }
+
+        return heightLimit;
+    }
+
+    static float getAmbientLight(WorldProvider provider) {
+        if (isVanillaNether(provider)) {
+            return 0.1F;
+        }
+
         if (provider != null) {
             float[] brightness = provider.getLightBrightnessTable();
             if (brightness != null && brightness.length > 0) {
@@ -60,12 +83,37 @@ public final class WorldInfoUniforms {
         return 0.0F;
     }
 
+    private static boolean isVanillaNether(WorldProvider provider) {
+        return getDimensionType(provider) == DimensionType.NETHER;
+    }
+
+    private static boolean isVanillaEnd(WorldProvider provider) {
+        return getDimensionType(provider) == DimensionType.THE_END;
+    }
+
+    private static DimensionType getDimensionType(WorldProvider provider) {
+        if (provider == null) {
+            return null;
+        }
+
+        try {
+            return provider.getDimensionType();
+        } catch (RuntimeException e) {
+            return null;
+        }
+    }
+
     private static World getWorld() {
-        return MC != null ? MC.world : null;
+        Minecraft minecraft = getMinecraft();
+        return minecraft != null ? minecraft.world : null;
     }
 
     private static WorldProvider getProvider() {
         World world = getWorld();
         return world != null ? world.provider : null;
+    }
+
+    private static Minecraft getMinecraft() {
+        return Minecraft.getMinecraft();
     }
 }

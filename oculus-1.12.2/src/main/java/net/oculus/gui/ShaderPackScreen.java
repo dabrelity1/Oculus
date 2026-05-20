@@ -13,11 +13,13 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
+import java.util.OptionalInt;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
-import java.util.Objects;
 import java.util.Properties;
+import java.util.zip.ZipError;
 
 import org.lwjgl.input.Keyboard;
 
@@ -34,9 +36,13 @@ import net.minecraft.util.text.TextComponentTranslation;
 import net.minecraft.util.text.TextFormatting;
 
 import net.oculus.Oculus;
+import net.oculus.client.ShaderPackReloader;
+import net.oculus.colorspace.ColorSpace;
 import net.oculus.config.OculusConfig;
 import net.oculus.gui.element.ShaderPackOptionList;
+import net.oculus.gui.element.widget.CommentedElementWidget;
 import net.oculus.pipeline.PipelineManager;
+import net.oculus.pipeline.WorldRenderingPipeline;
 import it.unimi.dsi.fastutil.objects.Object2IntMaps;
 import net.oculus.shaderpack.IdMap;
 import net.oculus.shaderpack.ShaderPack;
@@ -49,9 +55,7 @@ import net.oculus.shaderpack.option.values.MutableOptionValues;
 import net.oculus.shaderpack.texture.TextureStage;
 
 /**
- * 1.12-compatible skeleton for the shader pack selection screen. The UI wiring
- * mirrors the modern Iris implementation but defers functional pieces until the
- * remaining frontend widgets are ported.
+ * 1.12-compatible shader pack selection and configuration screen.
  */
 public class ShaderPackScreen extends GuiScreen {
     public static final Set<Runnable> TOP_LAYER_RENDER_QUEUE = new HashSet<>();
@@ -62,6 +66,7 @@ public class ShaderPackScreen extends GuiScreen {
     private static final int LAYOUT_MARGIN = 12;
     private static final int PACK_LIST_MAX_WIDTH = 308;
     private static final int OPTION_LIST_MAX_WIDTH = 400;
+    private static final int MAX_SHADOW_DISTANCE_CHUNKS = 32;
     private static final String SETTINGS_FILE_FILTER_LABEL = "Shader Pack Settings (.txt)";
 
     private static final ITextComponent SELECT_TITLE = createSubtitle("pack.iris.select.title");
@@ -271,8 +276,9 @@ public class ShaderPackScreen extends GuiScreen {
         switch (button.id) {
             case 0: // Done
                 this.dropChanges = false;
-                applyChanges();
-                this.mc.displayGuiScreen(this.parent);
+                if (applyChanges()) {
+                    this.mc.displayGuiScreen(this.parent);
+                }
                 break;
             case 1: // Apply
                 this.applyChanges();
@@ -323,14 +329,17 @@ public class ShaderPackScreen extends GuiScreen {
                 this.guiHidden = false;
                 this.initGui();
                 return;
+            } else if (this.navigation != null && this.navigation.hasHistory()) {
+                this.navigation.back();
+                return;
             } else if (this.optionMenuOpen) {
                 this.optionMenuOpen = false;
                 this.initGui();
                 return;
-            } else {
-                dropChangesAndClose();
-                return;
             }
+
+            super.keyTyped(typedChar, keyCode);
+            return;
         }
 
         if (!this.guiHidden) {
@@ -396,7 +405,7 @@ public class ShaderPackScreen extends GuiScreen {
     }
 
     public void onFilesDrop(List<Path> paths) {
-        // File drag-and-drop integration is deferred until the selection list is ported.
+        // 1.12's GuiScreen has no native file-drop callback; this is invoked only by optional integrations.
     }
 
     public void displayNotification(ITextComponent component) {
@@ -407,14 +416,35 @@ public class ShaderPackScreen extends GuiScreen {
     public void setElementHoveredStatus(Object widget, boolean hovered) {
         if (hovered && widget != this.hoveredElement) {
             this.hoveredElement = widget;
-            this.hoveredElementCommentTitle = Optional.empty();
-            this.hoveredElementCommentBody.clear();
+            updateHoveredElementComment(widget);
             this.hoveredElementCommentTimer = 0;
         } else if (!hovered && widget == this.hoveredElement) {
             this.hoveredElement = null;
             this.hoveredElementCommentTitle = Optional.empty();
             this.hoveredElementCommentBody.clear();
             this.hoveredElementCommentTimer = 0;
+        }
+    }
+
+    private void updateHoveredElementComment(Object widget) {
+        this.hoveredElementCommentTitle = Optional.empty();
+        this.hoveredElementCommentBody.clear();
+
+        if (!(widget instanceof CommentedElementWidget)) {
+            return;
+        }
+
+        CommentedElementWidget<?> commented = (CommentedElementWidget<?>) widget;
+        this.hoveredElementCommentTitle = commented.getCommentTitle();
+        Optional<ITextComponent> body = commented.getCommentBody();
+        if (body.isPresent()) {
+            String text = body.get().getFormattedText();
+            int width = Math.max(1, COMMENT_PANEL_WIDTH - 8);
+            if (this.fontRenderer != null) {
+                this.hoveredElementCommentBody.addAll(this.fontRenderer.listFormattedStringToWidth(text, width));
+            } else {
+                this.hoveredElementCommentBody.add(text);
+            }
         }
     }
 
@@ -429,7 +459,7 @@ public class ShaderPackScreen extends GuiScreen {
     }
 
     public ShaderPack getCurrentPack() {
-        return this.currentPack != null ? this.currentPack : ShaderPack.placeholder();
+        return this.currentPack != null ? this.currentPack : ShaderPack.internal();
     }
 
     public MutableOptionValues getWorkingOptionValues() {
@@ -439,7 +469,6 @@ public class ShaderPackScreen extends GuiScreen {
     void onShaderPackSelected(String packName) {
         this.selectedPackName = packName;
         loadShaderPack(packName);
-        persistSelectedPack(true);
         refreshForChangedPack();
     }
 
@@ -491,14 +520,6 @@ public class ShaderPackScreen extends GuiScreen {
         }
 
         optionValues.clearAll();
-
-        if (this.config != null) {
-            String packName = this.currentPack != null ? this.currentPack.getName() : null;
-            this.config.clearOptionOverrides(packName);
-        } else {
-            Oculus.LOGGER.debug("Resetting shader options without config available; overrides cleared only in-memory");
-        }
-
         markPendingChanges();
 
         if (this.optionList != null) {
@@ -573,20 +594,25 @@ public class ShaderPackScreen extends GuiScreen {
 
     private void dropChangesAndClose() {
         this.dropChanges = true;
-        this.mc.displayGuiScreen(this.parent);
+        if (discardChanges()) {
+            this.mc.displayGuiScreen(this.parent);
+        }
     }
 
-    private void applyChanges() {
+    private boolean applyChanges() {
         ShaderPack selectedPack = this.currentPack;
         boolean hasExternalPack = selectedPack != null && !selectedPack.isInternal();
         boolean enableShaders = this.pendingShadersEnabled && hasExternalPack;
 
-        ShaderPack packToApply = enableShaders && selectedPack != null
-            ? selectedPack
-            : ShaderPackLoader.internalPack();
+        ShaderPack packToApply = selectedPack;
+        if (enableShaders && selectedPack != null) {
+            packToApply = reloadSelectedPackForApply(selectedPack.getName(), this.workingOptionValues);
+            if (packToApply == null) {
+                return false;
+            }
+        }
 
-    PipelineManager.INSTANCE.reloadShaderPack(packToApply, this.workingOptionValues);
-
+        ConfigSnapshot applyConfigSnapshot = this.config != null ? ConfigSnapshot.capture(this.config) : null;
         this.pendingShadersEnabled = enableShaders;
         this.appliedThisSession = true;
         this.dropChanges = false;
@@ -594,43 +620,97 @@ public class ShaderPackScreen extends GuiScreen {
             this.selectedPackName = selectedPack.getName();
         }
 
+        if (!updateConfigAfterApply(enableShaders)) {
+            this.appliedThisSession = false;
+            displayNotification(coloredMessage(
+                "options.iris.applyFailed",
+                "Failed to apply shader pack. Check logs.",
+                TextFormatting.RED
+            ));
+            refreshForChangedPack();
+            return false;
+        }
+
+        boolean reloaded = ShaderPackReloader.reload();
+        if (enableShaders && !reloaded) {
+            this.appliedThisSession = false;
+            restoreConfigAfterApplyReloadFailure(applyConfigSnapshot);
+            displayNotification(coloredMessage(
+                "options.iris.applyFailed",
+                "Failed to apply shader pack. Check logs.",
+                TextFormatting.RED
+            ));
+            refreshForChangedPack();
+            return false;
+        }
+
         if (this.packList != null) {
             this.packList.markAppliedPack(this.selectedPackName);
         }
 
-        updateConfigAfterApply(enableShaders);
+        this.currentPack = packToApply;
         refreshWorkingOptionValuesFromCurrentPack(true);
         refreshForChangedPack();
         captureBaselineState("apply");
+        return true;
     }
 
-    private void discardChanges() {
+    private void restoreConfigAfterApplyReloadFailure(ConfigSnapshot snapshot) {
+        if (this.config == null || snapshot == null) {
+            return;
+        }
+
+        snapshot.restore(this.config);
+        if (!saveConfig("apply rollback")) {
+            displayConfigSaveFailure();
+            return;
+        }
+
+        boolean restored = ShaderPackReloader.reload();
+        if (this.config.areShadersEnabled() && this.config.getSelectedPackName() != null && !restored) {
+            Oculus.LOGGER.warn("Failed to restore previous shader pack after failed apply rollback");
+        }
+    }
+
+    private boolean discardChanges() {
         Oculus.LOGGER.debug("Discarding pending shader GUI changes; restoring baseline pack {}", this.baselinePackName);
+
+        ShaderPack packToRestore = resolveBaselinePack();
+        MutableOptionValues optionValuesToRestore = this.baselineOptionValues != null
+            ? this.baselineOptionValues.mutableCopy()
+            : ShaderPack.createEmptyOptionValues();
+
+        if (this.config != null) {
+            ConfigSnapshot snapshot = ConfigSnapshot.capture(this.config);
+            restoreBaselineConfig();
+            if (!saveConfig("discard")) {
+                snapshot.restore(this.config);
+                displayConfigSaveFailure();
+                refreshForChangedPack();
+                return false;
+            }
+        }
 
         this.dropChanges = false;
         this.appliedThisSession = true;
-
-        this.currentPack = resolveBaselinePack();
+        this.currentPack = packToRestore;
         this.selectedPackName = this.baselinePackName;
         this.pendingShadersEnabled = this.baselineShadersEnabled;
-
-        if (this.config != null) {
-            this.config.clearShaderOptionOverrides();
-            this.baselineOptionOverrides.forEach((pack, overrides) -> this.config.setOptionOverrides(pack, overrides));
-            this.config.setSelectedPackName(this.baselinePackName);
-            this.config.setShadersEnabled(this.baselineShadersEnabled);
-            saveConfig("discard");
-        }
-
         this.navigation = new NavigationController(this.currentPack.getMenuContainer());
-        this.workingOptionValues = this.baselineOptionValues != null
-            ? this.baselineOptionValues.mutableCopy()
-            : ShaderPack.createEmptyOptionValues();
+        this.workingOptionValues = optionValuesToRestore;
         refreshForChangedPack();
 
         if (this.packList != null && this.selectedPackName != null) {
             this.packList.markAppliedPack(this.selectedPackName);
         }
+        return true;
+    }
+
+    private void restoreBaselineConfig() {
+        this.config.clearShaderOptionOverrides();
+        this.baselineOptionOverrides.forEach((pack, overrides) -> this.config.setOptionOverrides(pack, overrides));
+        this.config.setSelectedPackName(this.baselinePackName);
+        this.config.setShadersEnabled(this.baselineShadersEnabled);
     }
 
     private void openShaderPackFolder() {
@@ -719,6 +799,10 @@ public class ShaderPackScreen extends GuiScreen {
     }
 
     String getAppliedPackName() {
+        if (!this.appliedThisSession) {
+            return this.baselinePackName;
+        }
+
         return this.currentPack != null ? this.currentPack.getName() : null;
     }
 
@@ -728,8 +812,8 @@ public class ShaderPackScreen extends GuiScreen {
 
     private void loadShaderPack(String packName) {
         try {
-            this.currentPack = ShaderPackLoader.load(packName);
-        } catch (IOException exception) {
+            this.currentPack = ShaderPackLoader.load(packName, getStoredOverrides(packName));
+        } catch (Exception | ZipError exception) {
             Oculus.LOGGER.error("Failed to load shader pack {}", packName, exception);
             this.currentPack = ShaderPack.of(
                 packName,
@@ -831,66 +915,83 @@ public class ShaderPackScreen extends GuiScreen {
     }
 
     private ShaderPack preloadSelectedPack(ShaderPack fallback) {
-        if (this.selectedPackName == null || (fallback != null && this.selectedPackName.equals(fallback.getName()))) {
+        if (this.selectedPackName == null) {
             return fallback;
         }
 
+        String packName = this.selectedPackName;
         try {
-            return ShaderPackLoader.load(this.selectedPackName);
-        } catch (IOException exception) {
-            Oculus.LOGGER.warn("Failed to load shader pack {} referenced by config", this.selectedPackName, exception);
-            displayNotification(new TextComponentString("Missing shader pack: " + this.selectedPackName));
-            clearOverridesForPack(this.selectedPackName);
+            return ShaderPackLoader.load(packName, getStoredOverrides(packName));
+        } catch (Exception | ZipError exception) {
+            Oculus.LOGGER.warn("Failed to load shader pack {} referenced by config", packName, exception);
+            displayNotification(new TextComponentString("Missing or invalid shader pack: " + packName));
+            ConfigSnapshot snapshot = this.config != null ? ConfigSnapshot.capture(this.config) : null;
+            clearOverridesForPack(packName);
             this.selectedPackName = null;
-            persistSelectedPack(true);
+            if (!persistSelectedPack(true)) {
+                if (snapshot != null) {
+                    snapshot.restore(this.config);
+                }
+                this.selectedPackName = packName;
+                displayConfigSaveFailure();
+            }
             return fallback != null ? fallback : ShaderPackLoader.internalPack();
         }
     }
 
     private void syncShaderToggleWithConfig() {
-        boolean enabledFromConfig;
-        if (this.config != null) {
-            enabledFromConfig = this.config.areShadersEnabled();
-        } else {
-            enabledFromConfig = this.currentPack != null && !this.currentPack.isInternal();
-        }
+        boolean enabled = this.appliedThisSession ? getAppliedShadersEnabled() : this.pendingShadersEnabled;
 
-        this.pendingShadersEnabled = enabledFromConfig;
+        this.pendingShadersEnabled = enabled;
 
         if (this.packList != null) {
             ShaderPackSelectionList.TopButtonRowEntry topRow = this.packList.getTopButtonRow();
             if (topRow != null) {
-                topRow.shadersEnabled = enabledFromConfig;
+                topRow.shadersEnabled = enabled;
             }
         }
     }
 
-    private void persistSelectedPack(boolean save) {
+    private boolean getAppliedShadersEnabled() {
+        if (this.config != null) {
+            return this.config.areShadersEnabled();
+        }
+
+        return this.currentPack != null && !this.currentPack.isInternal();
+    }
+
+    private boolean persistSelectedPack(boolean save) {
         if (this.config == null) {
-            return;
+            return true;
         }
 
         this.config.setSelectedPackName(this.selectedPackName);
         if (save) {
-            saveConfig("selection");
+            return saveConfig("selection");
         }
+        return true;
     }
 
-    private void updateConfigAfterApply(boolean shadersEnabled) {
+    private boolean updateConfigAfterApply(boolean shadersEnabled) {
         if (this.config == null) {
-            return;
+            return true;
         }
 
+        ConfigSnapshot snapshot = ConfigSnapshot.capture(this.config);
         if (this.currentPack != null && !this.currentPack.isInternal()) {
-            Map<String, String> snapshot = new HashMap<>(this.workingOptionValues.asMap());
-            this.config.setOptionOverrides(this.currentPack.getName(), snapshot);
+            Map<String, String> optionSnapshot = new HashMap<>(this.workingOptionValues.asMap());
+            this.config.setOptionOverrides(this.currentPack.getName(), optionSnapshot);
         } else if (this.selectedPackName != null) {
             this.config.clearOptionOverrides(this.selectedPackName);
         }
 
         this.config.setShadersEnabled(shadersEnabled);
         this.config.setSelectedPackName(this.selectedPackName);
-        saveConfig("apply");
+        if (!saveConfig("apply")) {
+            snapshot.restore(this.config);
+            return false;
+        }
+        return true;
     }
 
     void onShadersToggleChanged(boolean enabled) {
@@ -899,16 +1000,141 @@ public class ShaderPackScreen extends GuiScreen {
         refreshScreenSwitchButton();
     }
 
-    private void saveConfig(String reason) {
+    boolean isColorSpaceControlAvailable() {
+        return this.config != null;
+    }
+
+    String getColorSpaceButtonLabel() {
+        return I18n.format("options.iris.colorSpace") + ": " + getColorSpaceDisplayName(getConfiguredColorSpace());
+    }
+
+    String getColorSpaceTooltip() {
+        return I18n.format("options.iris.colorSpace.sodium_tooltip");
+    }
+
+    void cycleColorSpace() {
         if (this.config == null) {
             return;
         }
 
+        ColorSpace[] values = ColorSpace.values();
+        ColorSpace current = getConfiguredColorSpace();
+        ColorSpace next = values[(current.ordinal() + 1) % values.length];
+        this.config.setColorSpace(next);
+        if (!saveConfig("colorSpace")) {
+            this.config.setColorSpace(current);
+            displayConfigSaveFailure();
+            return;
+        }
+        displayNotification(new TextComponentString(getColorSpaceButtonLabel()));
+    }
+
+    boolean isShadowDistanceControlAvailable() {
+        return this.config != null && !getForcedShadowDistanceChunks().isPresent();
+    }
+
+    String getShadowDistanceButtonLabel() {
+        int distance = getDisplayedShadowDistanceChunks();
+        String value = distance <= 0 ? "0 (disabled)" : distance + " chunks";
+        return I18n.format("options.iris.shadowDistance") + ": " + value;
+    }
+
+    String getShadowDistanceTooltip() {
+        return I18n.format(getForcedShadowDistanceChunks().isPresent()
+            ? "options.iris.shadowDistance.disabled"
+            : "options.iris.shadowDistance.enabled");
+    }
+
+    float getShadowDistanceSliderFraction() {
+        return clamp(getDisplayedShadowDistanceChunks() / (float) MAX_SHADOW_DISTANCE_CHUNKS);
+    }
+
+    void setShadowDistanceFromSlider(float sliderFraction) {
+        if (!isShadowDistanceControlAvailable()) {
+            return;
+        }
+
+        int nextDistance = Math.round(clamp(sliderFraction) * MAX_SHADOW_DISTANCE_CHUNKS);
+        int previousDistance = this.config.getMaxShadowRenderDistance();
+        if (previousDistance == nextDistance) {
+            return;
+        }
+
+        this.config.setMaxShadowRenderDistance(nextDistance);
+        if (!saveConfig("shadowDistance")) {
+            this.config.setMaxShadowRenderDistance(previousDistance);
+            displayConfigSaveFailure();
+            return;
+        }
+        displayNotification(new TextComponentString(getShadowDistanceButtonLabel()));
+    }
+
+    private int getDisplayedShadowDistanceChunks() {
+        return getForcedShadowDistanceChunks().orElse(getConfiguredShadowDistanceChunks());
+    }
+
+    private int getConfiguredShadowDistanceChunks() {
+        return this.config != null
+            ? this.config.getMaxShadowRenderDistance()
+            : OculusConfig.DEFAULT_MAX_SHADOW_RENDER_DISTANCE;
+    }
+
+    private OptionalInt getForcedShadowDistanceChunks() {
+        WorldRenderingPipeline pipeline = PipelineManager.INSTANCE.getPipelineNullable();
+        return pipeline == null ? OptionalInt.empty() : pipeline.getForcedShadowRenderDistanceChunksForDisplay();
+    }
+
+    private ColorSpace getConfiguredColorSpace() {
+        return this.config != null ? this.config.getColorSpace() : ColorSpace.SRGB;
+    }
+
+    private static String getColorSpaceDisplayName(ColorSpace colorSpace) {
+        if (colorSpace == null) {
+            return "SRGB";
+        }
+
+        switch (colorSpace) {
+            case DCI_P3:
+                return "DCI_P3";
+            case DISPLAY_P3:
+                return "Display P3";
+            case REC2020:
+                return "REC2020";
+            case ADOBE_RGB:
+                return "Adobe RGB";
+            case SRGB:
+            default:
+                return "SRGB";
+        }
+    }
+
+    private static float clamp(float value) {
+        return Math.max(0.0F, Math.min(1.0F, value));
+    }
+
+    private boolean saveConfig(String reason) {
+        if (this.config == null) {
+            return true;
+        }
+
         try {
             this.config.save();
+            return true;
         } catch (IOException exception) {
             Oculus.LOGGER.warn("Failed to persist Oculus config ({})", reason, exception);
+            return false;
         }
+    }
+
+    private void displayConfigSaveFailure() {
+        TextComponentString component = new TextComponentString("Failed to save Oculus config. Check logs.");
+        Style style = component.getStyle();
+        if (style == null) {
+            style = new Style();
+            component.setStyle(style);
+        }
+        style.setColor(TextFormatting.RED);
+        displayNotification(component);
     }
 
     private void refreshWorkingOptionValuesFromCurrentPack() {
@@ -978,13 +1204,76 @@ public class ShaderPackScreen extends GuiScreen {
 
         if (this.baselinePackName != null) {
             try {
-                return ShaderPackLoader.load(this.baselinePackName);
-            } catch (IOException exception) {
+                return ShaderPackLoader.load(this.baselinePackName,
+                    this.baselineOptionValues != null ? this.baselineOptionValues.asMap() : getStoredOverrides(this.baselinePackName));
+            } catch (Exception | ZipError exception) {
                 Oculus.LOGGER.warn("Failed to reload baseline pack {} during discard", this.baselinePackName, exception);
             }
         }
 
         return ShaderPackLoader.internalPack();
+    }
+
+    private static final class ConfigSnapshot {
+        private final String selectedPackName;
+        private final boolean shadersEnabled;
+        private final Map<String, Map<String, String>> optionOverrides;
+
+        private ConfigSnapshot(String selectedPackName, boolean shadersEnabled, Map<String, Map<String, String>> optionOverrides) {
+            this.selectedPackName = selectedPackName;
+            this.shadersEnabled = shadersEnabled;
+            this.optionOverrides = optionOverrides;
+        }
+
+        static ConfigSnapshot capture(OculusConfig config) {
+            return new ConfigSnapshot(
+                config.getSelectedPackName(),
+                config.areShadersEnabled(),
+                deepCopy(config.getShaderOptionOverrides())
+            );
+        }
+
+        void restore(OculusConfig config) {
+            config.clearShaderOptionOverrides();
+            this.optionOverrides.forEach((pack, overrides) -> config.setOptionOverrides(pack, overrides));
+            config.setSelectedPackName(this.selectedPackName);
+            config.setShadersEnabled(this.shadersEnabled);
+        }
+
+        private static Map<String, Map<String, String>> deepCopy(Map<String, Map<String, String>> source) {
+            Map<String, Map<String, String>> copy = new HashMap<>();
+            if (source == null) {
+                return copy;
+            }
+
+            source.forEach((pack, overrides) -> copy.put(pack, new HashMap<>(overrides)));
+            return copy;
+        }
+    }
+
+    private ShaderPack reloadSelectedPackForApply(String packName, MutableOptionValues optionValues) {
+        try {
+            Map<String, String> overrides = optionValues != null ? optionValues.asMap() : new HashMap<>();
+            return ShaderPackLoader.load(packName, overrides);
+        } catch (Exception | ZipError exception) {
+            Oculus.LOGGER.error("Failed to reload shader pack {} with pending options", packName, exception);
+            ITextComponent failed = GuiUtil.translateOrDefault(
+                new TextComponentString("Failed to apply shader options. Check logs."),
+                "options.iris.applyOptionsFailed"
+            );
+            Style style = failed.getStyle();
+            if (style == null) {
+                style = new Style();
+                failed.setStyle(style);
+            }
+            style.setColor(TextFormatting.RED);
+            displayNotification(failed);
+            return null;
+        }
+    }
+
+    private Map<String, String> getStoredOverrides(String packName) {
+        return this.config != null ? this.config.getOptionOverrides(packName) : new HashMap<>();
     }
 
     private void clearOverridesForPack(String packName) {
@@ -1134,52 +1423,7 @@ public class ShaderPackScreen extends GuiScreen {
     }
 
     private int applyImportedValues(Map<String, String> rawValues) {
-        if (rawValues == null || rawValues.isEmpty()) {
-            return 0;
-        }
-
-        if (this.workingOptionValues == null) {
-            this.workingOptionValues = ShaderPack.createEmptyOptionValues();
-        }
-
-        Map<String, String> sanitized = new HashMap<>();
-        Map<String, String> currentValues = new HashMap<>(this.workingOptionValues.asMap());
-        int changed = 0;
-
-        for (Map.Entry<String, String> entry : rawValues.entrySet()) {
-            String key = entry.getKey();
-            String value = entry.getValue();
-            if (key == null || value == null) {
-                continue;
-            }
-            sanitized.put(key, value);
-            String existing = currentValues.get(key);
-            if (!Objects.equals(existing, value)) {
-                changed++;
-            }
-        }
-
-        if (sanitized.isEmpty()) {
-            return 0;
-        }
-
-        this.workingOptionValues.addAll(sanitized);
-
-        if (changed > 0) {
-            markPendingChanges();
-        }
-
-        if (this.optionList != null) {
-            this.optionList.setOptionValues(this.workingOptionValues);
-        }
-        if (this.navigation != null) {
-            this.navigation.refresh();
-        }
-        if (this.optionList != null) {
-            this.optionList.refresh();
-        }
-
-        return changed;
+        return applyEffectiveOptionValues(rawValues);
     }
 
     public void applyProfile(Profile profile) {
@@ -1187,40 +1431,7 @@ public class ShaderPackScreen extends GuiScreen {
             return;
         }
 
-        if (this.workingOptionValues == null) {
-            this.workingOptionValues = ShaderPack.createEmptyOptionValues();
-        }
-
-        Map<String, String> currentValues = new HashMap<>(this.workingOptionValues.asMap());
-        int changed = 0;
-
-        for (Map.Entry<String, String> entry : profile.optionValues.entrySet()) {
-            String key = entry.getKey();
-            String value = entry.getValue();
-            if (key == null || value == null) {
-                continue;
-            }
-
-            String existing = currentValues.get(key);
-            if (!Objects.equals(existing, value)) {
-                changed++;
-            }
-        }
-
-        this.workingOptionValues.addAll(profile.optionValues);
-
-        if (changed > 0) {
-            markPendingChanges();
-        }
-
-        if (this.optionList != null) {
-            this.optionList.setOptionValues(this.workingOptionValues);
-            this.optionList.refresh();
-        }
-
-        if (this.navigation != null) {
-            this.navigation.refresh();
-        }
+        int changed = applyEffectiveOptionValues(profile.optionValues);
 
         String profileName = profile.name != null && !profile.name.isEmpty() ? profile.name : I18n.format("options.iris.profile");
         ITextComponent message;
@@ -1239,6 +1450,73 @@ public class ShaderPackScreen extends GuiScreen {
         }
 
         displayNotification(message);
+    }
+
+    private int applyEffectiveOptionValues(Map<String, String> rawValues) {
+        if (rawValues == null || rawValues.isEmpty()) {
+            return 0;
+        }
+
+        if (this.workingOptionValues == null) {
+            this.workingOptionValues = ShaderPack.createEmptyOptionValues();
+        }
+
+        Map<String, String> sanitized = sanitizeOptionValues(rawValues);
+        if (sanitized.isEmpty()) {
+            return 0;
+        }
+
+        Map<String, String> before = new HashMap<>(this.workingOptionValues.asMap());
+        MutableOptionValues candidate = this.workingOptionValues.mutableCopy();
+        candidate.addAll(sanitized);
+        Map<String, String> after = new HashMap<>(candidate.asMap());
+
+        int changed = countEffectiveOptionChanges(before, after);
+        this.workingOptionValues = candidate;
+
+        if (changed > 0) {
+            markPendingChanges();
+        }
+
+        refreshOptionControlsAfterEffectiveChange();
+        return changed;
+    }
+
+    private Map<String, String> sanitizeOptionValues(Map<String, String> rawValues) {
+        Map<String, String> sanitized = new HashMap<>();
+        for (Map.Entry<String, String> entry : rawValues.entrySet()) {
+            String key = entry.getKey();
+            String value = entry.getValue();
+            if (key != null && value != null) {
+                sanitized.put(key, value);
+            }
+        }
+        return sanitized;
+    }
+
+    private int countEffectiveOptionChanges(Map<String, String> before, Map<String, String> after) {
+        Set<String> keys = new HashSet<>(before.keySet());
+        keys.addAll(after.keySet());
+
+        int changed = 0;
+        for (String key : keys) {
+            if (!Objects.equals(before.get(key), after.get(key))) {
+                changed++;
+            }
+        }
+        return changed;
+    }
+
+    private void refreshOptionControlsAfterEffectiveChange() {
+        if (this.optionList != null) {
+            this.optionList.setOptionValues(this.workingOptionValues);
+        }
+        if (this.navigation != null) {
+            this.navigation.refresh();
+        }
+        if (this.optionList != null) {
+            this.optionList.refresh();
+        }
     }
 
     private ExportFileResult writeExportFile(Path path, Map<String, String> values) {

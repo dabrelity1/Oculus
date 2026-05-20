@@ -10,4 +10,12 @@ public interface ValueUpdateNotifier {
      * updated.
      */
     void setListener(Runnable listener);
+
+    /**
+     * Removes a previously registered listener. Implementations that only
+     * support one listener may clear their listener state.
+     */
+    default void removeListener(Runnable listener) {
+        setListener(null);
+    }
 }

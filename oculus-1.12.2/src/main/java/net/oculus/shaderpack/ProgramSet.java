@@ -12,11 +12,6 @@ import net.oculus.shaderpack.include.AbsolutePackPath;
 import net.oculus.shaderpack.loading.ProgramId;
 import net.oculus.shaderpack.util.ComputeSourceCollector;
 
-/**
- * Port of the Iris {@code ProgramSet}. Shader loading and directive parsing are
- * stubbed for now, but the class structure mirrors the upstream version so
- * dependent systems can be migrated without churn.
- */
 public class ProgramSet implements ProgramSetInterface {
     private static final int PROGRAM_ARRAY_LENGTH = 99;
     private static final int COMPUTE_ARRAY_LENGTH = 27;
@@ -24,6 +19,7 @@ public class ProgramSet implements ProgramSetInterface {
     private final PackDirectives packDirectives;
     private final ShaderPack pack;
     private final ShaderProperties shaderProperties;
+    private final AbsolutePackPath programRoot;
 
     private final ProgramSource shadow;
     private final ComputeSource[] shadowCompute;
@@ -72,6 +68,7 @@ public class ProgramSet implements ProgramSetInterface {
                       ShaderProperties shaderProperties, ShaderPack pack) {
         this.pack = pack;
         this.shaderProperties = shaderProperties == null ? ShaderProperties.empty() : shaderProperties;
+        this.programRoot = directory == null ? AbsolutePackPath.fromAbsolutePath("/") : directory;
         this.packDirectives = new PackDirectives(PackRenderTargetDirectives.BASELINE_SUPPORTED_RENDER_TARGETS, this.shaderProperties);
 
         this.shadow = readProgramSource(directory, sourceProvider, "shadow", BlendModeOverride.OFF);
@@ -161,6 +158,10 @@ public class ProgramSet implements ProgramSetInterface {
     private ComputeSource[] readComputeArray(AbsolutePackPath directory, Function<AbsolutePackPath, String> sourceProvider, String name) {
         ComputeSource[] programs = new ComputeSource[COMPUTE_ARRAY_LENGTH];
 
+        if (isProgramDisabled(directory, name)) {
+            return programs;
+        }
+
         String basePath = name + ".csh";
         String source = sourceProvider.apply(directory.resolve(basePath));
         programs[0] = source == null ? null : new ComputeSource(name, source, this);
@@ -171,14 +172,19 @@ public class ProgramSet implements ProgramSetInterface {
                 break;
             }
 
-            String suffix = name + "_" + c + ".csh";
+            String programName = name + "_" + c;
+            if (isProgramDisabled(directory, programName)) {
+                break;
+            }
+
+            String suffix = programName + ".csh";
             String compute = sourceProvider.apply(directory.resolve(suffix));
 
             if (compute == null) {
                 break;
             }
 
-            programs[index] = new ComputeSource(name + "_" + c, compute, this);
+            programs[index] = new ComputeSource(programName, compute, this);
         }
 
         return programs;
@@ -194,33 +200,33 @@ public class ProgramSet implements ProgramSetInterface {
                                             Function<AbsolutePackPath, String> sourceProvider,
                                             String program,
                                             BlendModeOverride defaultBlend) {
+        if (isProgramDisabled(directory, program)) {
+            return ProgramSource.missing(program);
+        }
+
         String vertexSource = sourceProvider.apply(directory.resolve(program + ".vsh"));
         String geometrySource = sourceProvider.apply(directory.resolve(program + ".gsh"));
         String fragmentSource = sourceProvider.apply(directory.resolve(program + ".fsh"));
 
-        ProgramSource source = new ProgramSource(program, vertexSource, geometrySource, fragmentSource,
+        return new ProgramSource(program, vertexSource, geometrySource, fragmentSource,
             this, shaderProperties, defaultBlend);
-
-        if (!source.isValid() && "gbuffers_damagedblock".equals(program)) {
-            return fallbackDamagedBlock();
-        }
-
-        return source;
     }
 
-    private ProgramSource fallbackDamagedBlock() {
-        List<ProgramSource> candidates = Arrays.asList(
-            gbuffersTerrain, gbuffersTexturedLit, gbuffersTextured, gbuffersBasic
-        );
-
-        for (ProgramSource candidate : candidates) {
-            if (candidate != null && candidate.isValid()) {
-                Oculus.LOGGER.debug("Falling back to {} for gbuffers_damagedblock", candidate.getName());
-                return candidate;
-            }
+    private boolean isProgramDisabled(AbsolutePackPath directory, String program) {
+        if (pack == null) {
+            return false;
         }
 
-        return ProgramSource.missing("gbuffers_damagedblock");
+        String prefix = directory.getPathString();
+        if ("/".equals(prefix)) {
+            return pack.isProgramDisabled(program);
+        }
+
+        if (prefix.startsWith("/")) {
+            prefix = prefix.substring(1);
+        }
+
+        return pack.isProgramDisabled(prefix + "/" + program);
     }
 
     private void locateDirectives() {
@@ -241,8 +247,8 @@ public class ProgramSet implements ProgramSetInterface {
         ComputeSourceCollector.collect(computes, deferredCompute);
         ComputeSourceCollector.collect(computes, prepareCompute);
         ComputeSourceCollector.collect(computes, shadowCompCompute);
-        ComputeSourceCollector.collect(computes, shadowCompute);
         ComputeSourceCollector.collect(computes, finalCompute);
+        ComputeSourceCollector.collect(computes, shadowCompute);
 
         for (ComputeSource compute : computes) {
             if (compute == null) {
@@ -293,6 +299,10 @@ public class ProgramSet implements ProgramSetInterface {
 
     public ShaderPack getPack() {
         return pack;
+    }
+
+    public AbsolutePackPath getProgramRoot() {
+        return programRoot;
     }
 
     public ShaderProperties getShaderProperties() {

@@ -26,13 +26,13 @@ public final class FullScreenQuadRenderer {
         GlStateManager.pushMatrix();
         GlStateManager.loadIdentity();
         GlStateManager.ortho(-1.0, 1.0, -1.0, 1.0, -1.0, 1.0);
-        
+
         GlStateManager.matrixMode(GL11.GL_MODELVIEW);
         GlStateManager.pushMatrix();
         GlStateManager.loadIdentity();
-        
+
+        GlStateManager.color(1.0F, 1.0F, 1.0F, 1.0F);
         GlStateManager.disableDepth();
-        GlStateManager.depthMask(false);
     }
 
     /**
@@ -41,12 +41,11 @@ public final class FullScreenQuadRenderer {
     public static void end() {
         GlStateManager.matrixMode(GL11.GL_PROJECTION);
         GlStateManager.popMatrix();
-        
+
         GlStateManager.matrixMode(GL11.GL_MODELVIEW);
         GlStateManager.popMatrix();
-        
+
         GlStateManager.enableDepth();
-        GlStateManager.depthMask(true);
     }
 
     /**

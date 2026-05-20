@@ -25,6 +25,7 @@ public final class PackShadowDirectives {
     private float entityShadowDistanceMul = 1.0f;
     private boolean explicitRenderDistance = false;
     private float intervalSize = 2.0f;
+    private float voxelDistance = 160.0f;
 
     private final boolean shouldRenderTerrain;
     private final boolean shouldRenderTranslucent;
@@ -32,6 +33,7 @@ public final class PackShadowDirectives {
     private final boolean shouldRenderPlayer;
     private final boolean shouldRenderBlockEntities;
     private final OptionalBoolean cullingState;
+    private final ShadowCullingMode cullingMode;
 
     private final List<DepthSamplingSettings> depthSamplingSettings = new ArrayList<>();
     private final List<SamplingSettings> colorSamplingSettings = new ArrayList<>();
@@ -43,6 +45,7 @@ public final class PackShadowDirectives {
         this.shouldRenderPlayer = properties.getShadowPlayer().orElse(false);
         this.shouldRenderBlockEntities = properties.getShadowBlockEntities().orElse(true);
         this.cullingState = properties.getShadowCulling();
+        this.cullingMode = properties.getShadowCullingMode();
         this.shadowEnabled = properties.getShadowEnabled();
 
         depthSamplingSettings.add(new DepthSamplingSettings());
@@ -62,12 +65,14 @@ public final class PackShadowDirectives {
         this.entityShadowDistanceMul = other.entityShadowDistanceMul;
         this.explicitRenderDistance = other.explicitRenderDistance;
         this.intervalSize = other.intervalSize;
+        this.voxelDistance = other.voxelDistance;
         this.shouldRenderTerrain = other.shouldRenderTerrain;
         this.shouldRenderTranslucent = other.shouldRenderTranslucent;
         this.shouldRenderEntities = other.shouldRenderEntities;
         this.shouldRenderPlayer = other.shouldRenderPlayer;
         this.shouldRenderBlockEntities = other.shouldRenderBlockEntities;
         this.cullingState = other.cullingState;
+        this.cullingMode = other.cullingMode;
         this.depthSamplingSettings.addAll(other.depthSamplingSettings);
         this.colorSamplingSettings.addAll(other.colorSamplingSettings);
     }
@@ -104,6 +109,10 @@ public final class PackShadowDirectives {
         return intervalSize;
     }
 
+    public float getVoxelDistance() {
+        return voxelDistance;
+    }
+
     public boolean shouldRenderTerrain() {
         return shouldRenderTerrain;
     }
@@ -126,6 +135,10 @@ public final class PackShadowDirectives {
 
     public OptionalBoolean getCullingState() {
         return cullingState;
+    }
+
+    public ShadowCullingMode getCullingMode() {
+        return cullingMode;
     }
 
     public List<DepthSamplingSettings> getDepthSamplingSettings() {
@@ -154,6 +167,7 @@ public final class PackShadowDirectives {
         });
 
         directives.acceptConstFloatDirective("shadowIntervalSize", value -> this.intervalSize = value);
+        directives.acceptConstFloatDirective("voxelDistance", value -> this.voxelDistance = value);
 
         acceptHardwareFilteringSettings(directives, depthSamplingSettings);
         acceptDepthMipmapSettings(directives, depthSamplingSettings);

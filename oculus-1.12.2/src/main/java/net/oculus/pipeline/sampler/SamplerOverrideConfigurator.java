@@ -19,7 +19,6 @@ public final class SamplerOverrideConfigurator {
     private static final int SHADOW_DEPTH_UNIT = 5;
     private static final int SHADOW_COLOR_UNIT = 6;
     private static final int SHADOW_COLOR_UNIT_1 = 7;
-    private static final int SHADOW_COLOR_UNIT_2 = 8;
     private static final int DEPTH_TEXTURE_UNIT = 9;
 
     private final PackDirectives directives;
@@ -66,7 +65,6 @@ public final class SamplerOverrideConfigurator {
         builder.put("oculus_shadow_depth", SHADOW_DEPTH_UNIT);
         builder.put("oculus_shadow_color", SHADOW_COLOR_UNIT);
         builder.put("oculus_shadow_color1", SHADOW_COLOR_UNIT_1);
-        builder.put("oculus_shadow_color2", SHADOW_COLOR_UNIT_2);
     }
 
     private void registerNoiseAliases(SamplerOverrideMap.Builder builder) {

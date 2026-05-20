@@ -1,10 +1,9 @@
 package net.oculus.gl;
 
 /**
- * Minimal stand-in for the Iris GL resource wrapper. Responsible for tracking the
- * lifecycle of OpenGL objects created by the Oculus shader pipeline. The implementation
- * matches the 1.16.5 layout closely enough for downstream ports while remaining inert
- * on 1.12.2 until the backing GL calls are wired up.
+ * Base wrapper for OpenGL objects owned by the active Oculus shader pipeline.
+ * Subclasses perform the real LWJGL/GlStateManager deletion in destroyInternal();
+ * this class only centralizes the 1.16.5-style validity guard.
  */
 public abstract class GlResource {
     private final int id;
@@ -20,8 +19,11 @@ public abstract class GlResource {
             return;
         }
 
-        destroyInternal();
-        valid = false;
+        try {
+            destroyInternal();
+        } finally {
+            valid = false;
+        }
     }
 
     protected abstract void destroyInternal();
